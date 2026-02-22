@@ -1,15 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { Loader2 } from 'lucide-react';
+import { useCognitiveStore } from './stores/cognitiveStore';
 
-// Pages
+// Pages & Components
 import { Auth } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { Onboarding } from './pages/Onboarding';
 import { Memory } from './pages/Memory';
 import { BodyDoubling } from './pages/BodyDoubling';
 import { ManagerDashboard } from './pages/ManagerDashboard';
+import { CrisisMode } from './components/crisis/CrisisMode';
 
 // --- AUTH GUARD COMPONENT ---
 // Protects routes and ensures onboarding is complete before accessing the OS
@@ -20,81 +22,60 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const [userId, setUserId] = useState<string | null>(null);
   const location = useLocation();
 
+  const checkAuthAndProfile = useCallback(async (currentSession: any) => {
+    if (!currentSession) {
+      setAuthenticated(false);
+      setOnboardingComplete(false);
+      setUserId(null);
+      setLoading(false);
+      // Broadcast logout to extension
+      window.postMessage({ type: 'NEUROADAPT_AUTH', status: 'unauthenticated' }, '*');
+      return;
+    }
+
+    setAuthenticated(true);
+    setUserId(currentSession.user.id);
+
+    // Securely tell the content scripts that the user is verified
+    window.postMessage({ 
+      type: 'NEUROADAPT_AUTH', 
+      status: 'authenticated', 
+      userId: currentSession.user.id,
+    }, '*');
+
+    try {
+      // Check if the user has completed onboarding
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('cognitive_profile')
+        .eq('id', currentSession.user.id)
+        .single();
+
+      const isComplete = profile?.cognitive_profile && Object.keys(profile.cognitive_profile).length > 0;
+      setOnboardingComplete(!!isComplete);
+    } catch (error) {
+      console.error("[AuthGuard] Session verification failed:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    const checkAuthAndProfile = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session) {
-          setAuthenticated(false);
-          setUserId(null);
-          setLoading(false);
-          
-          // Broadcast logout to extension
-          window.postMessage({ type: 'NEUROADAPT_AUTH', status: 'unauthenticated' }, '*');
-          return;
-        }
+    // Initial load check
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      checkAuthAndProfile(session);
+    });
 
-        setAuthenticated(true);
-        const currentUserId = session.user.id;
-        setUserId(currentUserId);
-
-        // --- THE EXTENSION BRIDGE ---
-        // Securely tell the content scripts that the user is verified and they can begin intercepting Jira/Slack
-        window.postMessage({ 
-          type: 'NEUROADAPT_AUTH', 
-          status: 'authenticated', 
-          userId: currentUserId,
-        }, '*');
-
-        // Check if the user has completed onboarding by checking their profile data
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('cognitive_profile')
-          .eq('id', currentUserId)
-          .single();
-
-        // If the JSONB column has keys, we consider onboarding complete
-        const isComplete = profile?.cognitive_profile && Object.keys(profile.cognitive_profile).length > 0;
-        setOnboardingComplete(!!isComplete);
-      } catch (error) {
-        console.error("[AuthGuard] Session verification failed:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkAuthAndProfile();
-
-    // Listen for real-time auth changes (e.g., login/logout)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) {
-        setAuthenticated(false);
-        setUserId(null);
-        
-        // Broadcast logout to extension
-        window.postMessage({ type: 'NEUROADAPT_AUTH', status: 'unauthenticated' }, '*');
-      } else {
-        setAuthenticated(true);
-        const currentUserId = session.user.id;
-        setUserId(currentUserId);
-        
-        // Broadcast login to extension
-        window.postMessage({ 
-          type: 'NEUROADAPT_AUTH', 
-          status: 'authenticated', 
-          userId: currentUserId,
-        }, '*');
-        
-        // Soft reload to re-verify onboarding status on new logins
-        if (event === 'SIGNED_IN') window.location.reload(); 
-      }
+    // Listen for real-time auth changes gracefully (No window.reload!)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setLoading(true);
+      checkAuthAndProfile(session);
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [checkAuthAndProfile]);
 
-  // Calm loading state while verifying credentials
+  // Calm loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -112,18 +93,14 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/onboarding" replace />;
   }
 
-  // Prevent authenticated users from going back to login/onboarding unnecessarily
   if (authenticated && onboardingComplete && (location.pathname === '/auth' || location.pathname === '/onboarding')) {
     return <Navigate to="/" replace />;
   }
 
-  // Pass userId to children if needed via cloning, or let components fetch it themselves
-  // For this architecture, components like <Memory /> can receive it directly.
   return (
     <>
       {React.Children.map(children, child => {
         if (React.isValidElement(child)) {
-          // Inject userId into routes that explicitly require it (like Memory)
           return React.cloneElement(child as React.ReactElement<any>, { userId });
         }
         return child;
@@ -134,8 +111,15 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
 
 // --- MAIN ROUTER ---
 export default function App() {
+  const cognitiveLoadScore = useCognitiveStore((state) => state.cognitiveLoadScore);
+
   return (
     <Router>
+      
+      {/* GLOBAL CRISIS MODE TAKEOVER */}
+      {/* If the score hits 90, this completely eclipses the UI across all routes */}
+      {cognitiveLoadScore >= 90 && <CrisisMode />}
+
       <AuthGuard>
         <Routes>
           {/* Public / Un-onboarded Routes */}
@@ -143,8 +127,8 @@ export default function App() {
           <Route path="/onboarding" element={<Onboarding />} />
           
           {/* Protected OS Routes */}
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/memory" element={<Memory userId="" />} /> {/* userId injected by AuthGuard */}
+          <Route path="/" element={<Dashboard userId={session?.user?.id || ''} />} />
+          <Route path="/memory" element={<Memory userId="" />} />
           <Route path="/body-doubling" element={<BodyDoubling />} />
           
           {/* B2B Enterprise Route */}

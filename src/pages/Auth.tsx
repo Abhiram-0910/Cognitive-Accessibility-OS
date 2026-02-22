@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Auth } from '@supabase/auth-ui-react';
+import { Auth as SupabaseAuth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
 import { supabase } from '../lib/supabase';
 
@@ -41,7 +41,7 @@ export const AuthPage: React.FC = () => {
           <p className="text-sm text-slate-500 mt-2 font-medium">Your cognitive environment awaits.</p>
         </div>
         
-        <Auth
+        <SupabaseAuth
           supabaseClient={supabase}
           appearance={{
             theme: ThemeSupa,

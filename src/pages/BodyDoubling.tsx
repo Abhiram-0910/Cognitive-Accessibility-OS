@@ -1,144 +1,154 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useCognitiveStore } from '../stores/cognitiveStore';
-import { Users, Radio, Video, Play } from 'lucide-react';
+import { Users, Video, Clock, Shield, Loader2, Circle } from 'lucide-react';
 
-interface ActivePeer {
+interface OnlineUser {
   user_id: string;
-  display_name: string;
-  task_type: string;
-  load_state: string;
+  status: string;
+  online_at: string;
+  classification: string;
 }
 
 export const BodyDoubling: React.FC = () => {
-  const { cognitiveLoadScore, classification } = useCognitiveStore();
-  const [isBroadcasting, setIsBroadcasting] = useState(false);
-  const [taskType, setTaskType] = useState('Deep Work');
-  const [activePeers, setActivePeers] = useState<ActivePeer[]>([]);
+  const { classification } = useCognitiveStore();
+  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
+  const [isConnecting, setIsConnecting] = useState(true);
 
   useEffect(() => {
-    // Initialize Supabase Realtime Channel
-    const channel = supabase.channel('body-doubling-lobby', {
+    let isMounted = true;
+    
+    // Initialize the Supabase Realtime Channel
+    const room = supabase.channel('body_doubling', {
       config: {
-        presence: { key: 'user_state' },
+        presence: {
+          key: 'user_presence',
+        },
       },
     });
 
-    channel
+    room
       .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState();
-        const peers: ActivePeer[] = [];
+        if (!isMounted) return;
+        const newState = room.presenceState();
         
-        for (const id in state) {
-          // Flatten presence arrays
-          state[id].forEach((pres: any) => peers.push(pres as ActivePeer));
+        // Flatten the presence state into a simple array of users
+        const users: OnlineUser[] = [];
+        for (const key in newState) {
+          // Supabase presence groups by key, we take the first instance of each user
+          const userState = newState[key][0] as any;
+          if (userState) {
+            users.push({
+              user_id: key, // Using the presence key as a mock ID for display
+              status: userState.status,
+              online_at: userState.online_at,
+              classification: userState.classification
+            });
+          }
         }
-        
-        // Remove self from the list for UI display purposes
-        supabase.auth.getUser().then(({ data }) => {
-           if (data.user) {
-             setActivePeers(peers.filter(p => p.user_id !== data.user.id));
-           }
-        });
+        setOnlineUsers(users);
+        setIsConnecting(false);
       })
-      .subscribe();
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        console.log('[Realtime] User joined:', key, newPresences);
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        console.log('[Realtime] User left:', key, leftPresences);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          // Broadcast our own status to the room once connected
+          const { data: { session } } = await supabase.auth.getSession();
+          const userId = session?.user?.id || `guest_${Math.random().toString(36).substring(7)}`;
+          
+          await room.track({
+            user_id: userId,
+            status: 'looking_for_partner',
+            online_at: new Date().toISOString(),
+            classification: classification // Share cognitive state to find matching energy
+          });
+        }
+      });
 
     return () => {
-      supabase.removeChannel(channel);
+      isMounted = false;
+      supabase.removeChannel(room);
     };
-  }, []);
-
-  const toggleBroadcast = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const channel = supabase.channel('body-doubling-lobby');
-
-    if (!isBroadcasting) {
-      // Fetch profile name (mocked here for simplicity, ideally fetched from context)
-      const displayName = `User-${user.id.substring(0,4)}`; 
-
-      await channel.track({
-        user_id: user.id,
-        display_name: displayName,
-        task_type: taskType,
-        load_state: classification,
-      });
-      setIsBroadcasting(true);
-    } else {
-      await channel.untrack();
-      setIsBroadcasting(false);
-    }
-  };
+  }, [classification]);
 
   return (
-    <div className="max-w-4xl mx-auto p-8">
-      <header className="mb-12">
-        <h1 className="text-3xl font-light text-slate-800 tracking-tight flex items-center gap-3">
-          <Users className="w-8 h-8 text-teal-500" /> Focus Partnerships
-        </h1>
-        <p className="text-slate-500 mt-2">Bypass task paralysis through silent virtual co-working.</p>
-      </header>
+    <div className="min-h-screen bg-slate-50 p-8 font-sans">
+      <div className="max-w-5xl mx-auto">
+        <header className="mb-10">
+          <h1 className="text-3xl font-light text-slate-800 tracking-tight flex items-center gap-3">
+            <Users className="w-8 h-8 text-indigo-500" />
+            Body Doubling Lobby
+          </h1>
+          <p className="text-slate-500 mt-2">Find a virtual co-working partner to anchor your focus and bypass executive dysfunction.</p>
+        </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        
-        {/* Broadcast Controls */}
-        <div className="md:col-span-1 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-          <h3 className="text-sm font-semibold text-slate-800 tracking-wide mb-4 flex items-center gap-2">
-            <Radio className="w-4 h-4 text-teal-500" /> Your Signal
-          </h3>
-          
-          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Current Focus</label>
-          <select 
-            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 mb-6"
-            value={taskType}
-            onChange={(e) => setTaskType(e.target.value)}
-            disabled={isBroadcasting}
-          >
-            <option value="Deep Work">Deep Work (Silent)</option>
-            <option value="Admin/Emails">Admin & Emails</option>
-            <option value="Creative Synthesis">Creative Synthesis</option>
-            <option value="Executive Function Bypass">Executive Function Bypass (High Friction)</option>
-          </select>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Active Lobby List */}
+          <div className="lg:col-span-2 space-y-4">
+            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <Circle className="w-2.5 h-2.5 fill-emerald-500 text-emerald-500 animate-pulse" /> 
+              Live Network
+            </h3>
 
-          <button
-            onClick={toggleBroadcast}
-            className={`w-full py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${
-              isBroadcasting 
-                ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100'
-                : 'bg-teal-500 hover:bg-teal-600 text-white shadow-md'
-            }`}
-          >
-            {isBroadcasting ? 'Stop Broadcasting' : <><Play className="w-4 h-4" /> Enter Lobby</>}
-          </button>
-        </div>
-
-        {/* Active Lobby */}
-        <div className="md:col-span-2">
-          <h3 className="text-sm font-semibold text-slate-800 tracking-wide mb-4">Available Partners</h3>
-          
-          {activePeers.length === 0 ? (
-            <div className="p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400">
-              No one is currently broadcasting. Start your signal to invite others.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {activePeers.map((peer, idx) => (
-                <div key={idx} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      <span className="font-semibold text-slate-800">{peer.display_name}</span>
+            {isConnecting ? (
+              <div className="bg-white p-12 rounded-3xl border border-slate-100 flex flex-col items-center justify-center text-slate-400">
+                <Loader2 className="w-8 h-8 animate-spin mb-4 text-indigo-400" />
+                <p>Connecting to secure presence network...</p>
+              </div>
+            ) : onlineUsers.length === 0 ? (
+              <div className="bg-white p-12 rounded-3xl border border-slate-100 text-center text-slate-500">
+                You are currently the only one in the lobby. Keep it open, partners usually join at the top of the hour.
+              </div>
+            ) : (
+              onlineUsers.map((user, idx) => (
+                <div key={idx} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between hover:border-indigo-100 hover:shadow-md transition-all">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 font-bold">
+                      {user.user_id.substring(0, 2).toUpperCase()}
                     </div>
-                    <p className="text-xs text-slate-500 mt-1">{peer.task_type} • Load: {peer.load_state.replace('_', ' ')}</p>
+                    <div>
+                      <h4 className="font-semibold text-slate-800 flex items-center gap-2">
+                        Anonymous Peer
+                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
+                          {user.status.replace(/_/g, ' ')}
+                        </span>
+                      </h4>
+                      <p className="text-xs text-slate-500 capitalize flex items-center gap-1 mt-0.5">
+                        Current State: {user.classification.replace('_', ' ')}
+                      </p>
+                    </div>
                   </div>
-                  <button className="px-4 py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 border border-slate-200">
-                    <Video className="w-4 h-4" /> Request Sync
+                  <button className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-colors flex items-center gap-2 shadow-sm">
+                    <Video className="w-4 h-4" /> Request Focus Session
                   </button>
                 </div>
-              ))}
+              ))
+            )}
+          </div>
+
+          {/* Guidelines Sidebar */}
+          <div className="lg:col-span-1">
+            <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-3xl sticky top-8">
+              <h3 className="text-sm font-bold text-indigo-800 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <Shield className="w-4 h-4" /> Zero-Pressure Rules
+              </h3>
+              <ul className="space-y-4 text-sm text-indigo-900/80">
+                <li className="flex gap-3">
+                  <Clock className="w-5 h-5 text-indigo-400 shrink-0" />
+                  <span>Sessions are exactly 50 minutes. The OS will automatically disconnect you when time is up.</span>
+                </li>
+                <li className="flex gap-3">
+                  <Video className="w-5 h-5 text-indigo-400 shrink-0" />
+                  <span>Cameras are optional but recommended. Microphones are muted by default. No small talk required.</span>
+                </li>
+              </ul>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

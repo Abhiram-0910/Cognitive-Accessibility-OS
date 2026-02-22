@@ -1,5 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { processIncomingWebhook } from '../integrations/backgroundIndexer'; // Previously built
+
+// Replace the import with a stub function since backgroundIndexer is actually in the frontend
+const processIncomingWebhook = async (payload: any) => {
+    console.log("Webhook received:", payload);
+    return true;
+};
 
 export const setupWebhookRoutes = () => {
   const router = Router();

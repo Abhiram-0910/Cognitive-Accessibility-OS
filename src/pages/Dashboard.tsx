@@ -61,44 +61,47 @@ export const Dashboard: React.FC<{ userId: string }> = ({ userId }) => {
           </div>
         </header>
 
-        {/* Main Grid */}
-        <main className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
-          
-          {/* Left Column: Visual Indicator */}
-          <section className="lg:col-span-5 flex flex-col items-center bg-white/50 backdrop-blur-md rounded-3xl py-12 border border-slate-100 shadow-sm">
-            <CognitiveStateOrb />
-          </section>
+        {/* Clinical Export Target - Wrapper for PDF capture */}
+        <div id="clinical-export-target" className="space-y-8">
+          {/* Main Grid */}
+          <main className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
+            
+            {/* Left Column: Visual Indicator */}
+            <section className="lg:col-span-5 flex flex-col items-center bg-white/50 backdrop-blur-md rounded-3xl py-12 border border-slate-100 shadow-sm">
+              <CognitiveStateOrb />
+            </section>
 
-          {/* Right Column: Analytics & Micro-Metrics */}
-          <section className="lg:col-span-7 flex flex-col gap-8">
-            <EnergyTimeline />
+            {/* Right Column: Analytics & Micro-Metrics */}
+            <section className="lg:col-span-7 flex flex-col gap-8">
+              <EnergyTimeline />
 
-            {/* Live Metrics Grid */}
-            <div className="grid grid-cols-2 gap-6">
-              <MetricCard 
-                title="Keystrokes / Min" 
-                value={permissionsGranted ? useCognitiveStore.getState().metrics.keystrokesPerMinute.toString() : '—'} 
-                subtitle="Current velocity"
-              />
-              <MetricCard 
-                title="Cognitive Pauses" 
-                value={permissionsGranted ? useCognitiveStore.getState().metrics.pauseFrequency.toString() : '—'} 
-                subtitle="Delays > 3s"
-              />
-              <MetricCard 
-                title="Context Switches" 
-                value={permissionsGranted ? useCognitiveStore.getState().metrics.contextSwitches.toString() : '—'} 
-                subtitle="Tab/Window changes"
-              />
-              <MetricCard 
-                title="Error Rate" 
-                value={permissionsGranted ? `${(useCognitiveStore.getState().metrics.errorRate * 100).toFixed(1)}%` : '—'} 
-                subtitle="Backspace ratio"
-              />
-            </div>
-          </section>
+              {/* Live Metrics Grid */}
+              <div className="grid grid-cols-2 gap-6">
+                <MetricCard 
+                  title="Keystrokes / Min" 
+                  value={permissionsGranted ? useCognitiveStore.getState().metrics.keystrokesPerMinute.toString() : '—'} 
+                  subtitle="Current velocity"
+                />
+                <MetricCard 
+                  title="Cognitive Pauses" 
+                  value={permissionsGranted ? useCognitiveStore.getState().metrics.pauseFrequency.toString() : '—'} 
+                  subtitle="Delays > 3s"
+                />
+                <MetricCard 
+                  title="Context Switches" 
+                  value={permissionsGranted ? useCognitiveStore.getState().metrics.contextSwitches.toString() : '—'} 
+                  subtitle="Tab/Window changes"
+                />
+                <MetricCard 
+                  title="Error Rate" 
+                  value={permissionsGranted ? `${(useCognitiveStore.getState().metrics.errorRate * 100).toFixed(1)}%` : '—'} 
+                  subtitle="Backspace ratio"
+                />
+              </div>
+            </section>
 
-        </main>
+          </main>
+        </div>
         
         {/* Demo Mode Indicator */}
         {!permissionsGranted && (

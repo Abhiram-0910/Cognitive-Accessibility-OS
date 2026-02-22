@@ -7,9 +7,17 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 
 import { setupApiRoutes } from './routes/api';
+import { agentRoutes } from './routes/agents';
 import { setupSocketHandlers } from './sockets/cognitiveStream';
+import { setupGoogleAuthRoutes } from './integrations/google';
 
 dotenv.config();
+
+// 🛑 Strict Fail-Fast Environment Check for AI API
+if (!process.env.GEMINI_API_KEY) {
+  console.error('❌ FATAL ERROR: GEMINI_API_KEY is missing from the environment variables.');
+  process.exit(1); // Crash the Node process immediately
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -18,19 +26,18 @@ const server = http.createServer(app);
 // SECURITY & MIDDLEWARE
 // ============================================================================
 
-// Strict CORS for the frontend origin
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 
 app.use(helmet());
 app.use(cors({
   origin: CLIENT_URL,
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'OPTIONS'],
   credentials: true,
 }));
 
 app.use(express.json());
 
-// Rate Limiter: Protects REST endpoints from abuse (e.g., brute forcing auth or spamming agent actions)
+// Rate Limiter
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Limit each IP to 100 requests per window
@@ -43,8 +50,10 @@ const apiLimiter = rateLimit({
 // ROUTING & WEBSOCKETS
 // ============================================================================
 
-// Mount REST API with rate limiting
+// Mount REST API, Agents, and Google Auth Integrations
 app.use('/api', apiLimiter, setupApiRoutes());
+app.use('/api/agents', agentRoutes);
+app.use('/auth', setupGoogleAuthRoutes());
 
 // Initialize Socket.io with matching CORS policy
 const io = new Server(server, {

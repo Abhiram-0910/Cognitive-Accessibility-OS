@@ -60,7 +60,9 @@ export const RsdShield: React.FC<RsdShieldProps> = ({ senderName, senderContext,
           <div className="flex items-center gap-2 mb-1">
             <span className="font-semibold text-slate-800 text-sm">{senderName}</span>
             {!analysis?.is_high_risk && (
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" title="Low RSD Risk" />
+              <div title="Low RSD Risk">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              </div>
             )}
           </div>
           <p className="text-slate-700 text-sm leading-relaxed">{messageText}</p>

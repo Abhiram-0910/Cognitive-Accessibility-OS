@@ -127,3 +127,55 @@ AS $$
   ORDER BY similarity DESC
   LIMIT match_count;
 $$;
+
+-- ==========================================
+-- MISSING TABLES FOR DEMO & FULL FUNCTIONALITY
+-- ==========================================
+
+CREATE TABLE public.cognitive_snapshots (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    score INTEGER NOT NULL,
+    classification TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+
+CREATE TABLE public.communications (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    original_text TEXT,
+    translated_text TEXT,
+    saved_minutes INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+
+CREATE TABLE public.masking_events (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    trigger TEXT,
+    intensity INTEGER,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+
+CREATE TABLE public.crisis_plans (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    plan_steps JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+
+-- ==========================================
+-- RLS POLICIES FOR NEW TABLES
+-- ==========================================
+
+ALTER TABLE public.cognitive_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.communications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.masking_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.crisis_plans ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users view own snapshots" ON public.cognitive_snapshots FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users insert own snapshots" ON public.cognitive_snapshots FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users isolate communications" ON public.communications FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users isolate masking_events" ON public.masking_events FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users isolate crisis_plans" ON public.crisis_plans FOR ALL USING (auth.uid() = user_id);
