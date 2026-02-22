@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "NeuroAdaptive Agentic Interceptor",
+  "version": "1.0.0",
+  "description": "Seamlessly intercepts and translates vague corporate communication in Gmail based on your cognitive load.",
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://mail.google.com/*",
+    "*://localhost:5173/*" 
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://mail.google.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "NeuroAdaptive OS"
+  }
+}
