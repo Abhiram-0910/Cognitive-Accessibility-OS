@@ -1,4 +1,4 @@
-import { jsonModel } from '../lib/gemini';
+import { callAgent } from '../lib/api';
 
 export interface CognitiveExercise {
   title: string;
@@ -28,6 +28,6 @@ export const generateSkillExercise = async (cognitiveStyle: string, focusArea: s
     Desired Training Area: "${focusArea}"
   `;
 
-  const result = await jsonModel.generateContent(prompt);
-  return JSON.parse(result.response.text()) as CognitiveExercise;
+  const result = await callAgent<CognitiveExercise>({ prompt, jsonMode: true });
+  return result as CognitiveExercise;
 };

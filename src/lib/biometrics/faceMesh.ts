@@ -5,7 +5,6 @@ export class BiometricVisionEngine {
   private isRunning = false;
   private videoElement: HTMLVideoElement | null = null;
   
-  // Baselines for the specific user to calculate delta
   private baselineBrowDistance = 0;
   private calibrationFrames = 0;
 
@@ -41,24 +40,18 @@ export class BiometricVisionEngine {
         if (results.faceLandmarks && results.faceLandmarks.length > 0) {
           const landmarks = results.faceLandmarks[0];
           
-          // Heuristic 1: Brow Tension (Distance between inner eyebrows: indices 107 and 336)
           const leftBrowInner = landmarks[107];
           const rightBrowInner = landmarks[336];
           const browDistance = Math.abs(leftBrowInner.x - rightBrowInner.x);
 
-          // Calibrate baseline dynamically
           if (this.calibrationFrames < 30) {
             this.baselineBrowDistance += browDistance;
             this.calibrationFrames++;
           }
           
           const avgBaseline = this.baselineBrowDistance / Math.max(1, this.calibrationFrames);
-          // If distance shrinks below baseline, tension is high (furrowed brow)
           const tensionScore = Math.max(0, (avgBaseline - browDistance) / avgBaseline);
 
-          // Heuristic 2: Gaze Wander (Simplified tracking of iris center relative to eye corners)
-          // In a full implementation, you'd calculate the iris bounding box delta over time
-          // Here we use the blendshapes if available, or simulate it
           const blendshapes = results.faceBlendshapes?.[0]?.categories || [];
           const eyeLookOut = blendshapes.find(b => b.categoryName === 'eyeLookOutLeft')?.score || 0;
           const eyeLookIn = blendshapes.find(b => b.categoryName === 'eyeLookInLeft')?.score || 0;
@@ -66,22 +59,35 @@ export class BiometricVisionEngine {
           const gazeWanderScore = (eyeLookOut + eyeLookIn) / 2;
 
           onTick({
-            tension: Math.min(100, tensionScore * 1000), // Scaled for 0-100 UI
+            tension: Math.min(100, tensionScore * 1000), 
             gazeWander: Math.min(100, gazeWanderScore * 100),
           });
         }
       }
-      requestAnimationFrame(analyzeFrame);
+      // Only request the next frame if we are still running
+      if (this.isRunning) {
+        requestAnimationFrame(analyzeFrame);
+      }
     };
 
     analyzeFrame();
   }
 
-  stop() {
+  // --- CRITICAL FIX: Explicit GPU & Camera Cleanup ---
+  close() {
     this.isRunning = false;
+    
+    // 1. Kill the hardware camera tracks
     if (this.videoElement && this.videoElement.srcObject) {
       const stream = this.videoElement.srcObject as MediaStream;
       stream.getTracks().forEach(track => track.stop());
+      this.videoElement.srcObject = null;
+    }
+
+    // 2. Free up WebGL/GPU memory allocated by MediaPipe
+    if (this.landmarker) {
+      this.landmarker.close();
+      this.landmarker = null;
     }
   }
 }

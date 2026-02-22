@@ -1,12 +1,4 @@
-import { genAI } from '../lib/gemini';
-
-// Using the standard model for raw text/code output
-const textModel = genAI.getGenerativeModel({
-  model: 'gemini-1.5-flash',
-  generationConfig: {
-    temperature: 0.1, // Very low temperature for strict syntax adherence
-  },
-});
+import { callAgent } from '../lib/api';
 
 const SYSTEM_INSTRUCTION = `
 You are an expert cognitive translator. Your task is to take chaotic, unstructured workplace chat threads and convert them into a highly structured, visual mind map using Mermaid.js Flowchart syntax.
@@ -26,9 +18,10 @@ Rules for the Mermaid code:
 export async function generateMermaidGraph(threadText: string): Promise<string> {
   try {
     const prompt = `${SYSTEM_INSTRUCTION}\n\nThread to visualize:\n"${threadText}"`;
-    const result = await textModel.generateContent(prompt);
-    let code = result.response.text();
-
+    const result = await callAgent<string>({ prompt, jsonMode: false });
+    
+    let code = result as string;
+    
     // Safety layer: Strip markdown code blocks if the LLM ignores instructions
     code = code.replace(/```mermaid\n?/g, '');
     code = code.replace(/```\n?/g, '');

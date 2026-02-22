@@ -10,12 +10,7 @@ const PAUSE_THRESHOLD_MS = 3000; // >3s between keystrokes counts as a cognitive
 const ROLLING_WINDOW_MS = 60000; // Calculate KPM over a 1-minute rolling window
 
 export const useCognitiveMonitor = () => {
-  const updateMetrics = useCognitiveStore((state) => state.updateMetrics);
-
-  // Initialize the TF.js model on mount
-  useEffect(() => {
-    initCognitiveModel().catch(console.error);
-  }, []);
+  const { updateMetrics, permissionsGranted } = useCognitiveStore();
 
   // Mutable refs for high-frequency tracking (prevents React render flooding)
   const metrics = useRef({
@@ -34,8 +29,14 @@ export const useCognitiveMonitor = () => {
   // Biometric engine refs
   const visionEngine = useRef(new BiometricVisionEngine());
   const voiceEngine = useRef(new VoiceBiomarkerEngine());
+  
+  // Flag to track if the model has been initialized
+  const modelInitialized = useRef(false);
 
   const calculateCognitiveLoad = useCallback(() => {
+    // If permissions are not granted, don't calculate anything
+    if (!permissionsGranted) return;
+    
     const currentMetrics = metrics.current;
 
     // 1. Calculate Error Rate (Ratio of backspaces to total keystrokes)
@@ -91,10 +92,16 @@ export const useCognitiveMonitor = () => {
     metrics.current.contextSwitches = 0;
     metrics.current.totalKeystrokes = 0;
     metrics.current.backspaces = 0;
-  }, [updateMetrics]);
+  }, [updateMetrics, permissionsGranted]);
 
   // Method to start biometric tracking during meetings
   const startBiometrics = useCallback(async (videoElement: HTMLVideoElement) => {
+    // Check permissions before starting biometrics
+    if (!permissionsGranted) {
+      console.warn("Biometric access denied: User has not granted permissions");
+      return false;
+    }
+    
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { width: { ideal: 640 }, height: { ideal: 480 } }, 
@@ -117,7 +124,7 @@ export const useCognitiveMonitor = () => {
       console.warn("Biometric access denied", err);
       return false;
     }
-  }, []);
+  }, [permissionsGranted]);
 
   // Method to stop biometric tracking
   const stopBiometrics = useCallback(() => {
@@ -134,6 +141,19 @@ export const useCognitiveMonitor = () => {
   }, []);
 
   useEffect(() => {
+    // SECURITY GATE: Do absolutely nothing if consent has not been granted
+    if (!permissionsGranted) {
+      // Clean up any active biometric tracking
+      stopBiometrics();
+      return;
+    }
+
+    // Initialize the TF.js model only after consent is granted
+    if (!modelInitialized.current) {
+      initCognitiveModel().catch(console.error);
+      modelInitialized.current = true;
+    }
+
     let ticking = false;
 
     // High-performance throttling for DOM events to prevent JS main thread lockup
@@ -187,10 +207,16 @@ export const useCognitiveMonitor = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
       clearInterval(intervalId);
+      
       // Also stop biometrics on unmount to release media devices
       stopBiometrics();
+      
+      // Reset model initialization flag if permissions are revoked
+      if (!permissionsGranted) {
+        modelInitialized.current = false;
+      }
     };
-  }, [calculateCognitiveLoad, stopBiometrics]);
+  }, [calculateCognitiveLoad, permissionsGranted, stopBiometrics]);
 
   // Expose biometric control methods for external use
   return {

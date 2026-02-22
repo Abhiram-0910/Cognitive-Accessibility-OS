@@ -1,4 +1,4 @@
-import { jsonModel } from '../lib/gemini';
+import { callAgent } from '../lib/api';
 
 export interface HyperfocusSummary {
   core_insight: string;
@@ -29,8 +29,8 @@ export const summarizeHyperfocus = async (notes: string): Promise<HyperfocusSumm
 
     Raw Notes: "${notes}"
   `;
-  const result = await jsonModel.generateContent(prompt);
-  return JSON.parse(result.response.text()) as HyperfocusSummary;
+  const result = await callAgent<HyperfocusSummary>({ prompt, jsonMode: true });
+  return result as HyperfocusSummary;
 };
 
 export const generateReentryBrief = async (taskName: string, contextNotes: string): Promise<ReentryBrief> => {
@@ -48,8 +48,8 @@ export const generateReentryBrief = async (taskName: string, contextNotes: strin
     Task: "${taskName}"
     Historical Context: "${contextNotes}"
   `;
-  const result = await jsonModel.generateContent(prompt);
-  return JSON.parse(result.response.text()) as ReentryBrief;
+  const result = await callAgent<ReentryBrief>({ prompt, jsonMode: true });
+  return result as ReentryBrief;
 };
 
 export const analyzeRsdRisk = async (message: string, senderContext: string): Promise<RsdAnalysis> => {
@@ -68,6 +68,6 @@ export const analyzeRsdRisk = async (message: string, senderContext: string): Pr
     Sender Context: "${senderContext}"
     Incoming Message: "${message}"
   `;
-  const result = await jsonModel.generateContent(prompt);
-  return JSON.parse(result.response.text()) as RsdAnalysis;
+  const result = await callAgent<RsdAnalysis>({ prompt, jsonMode: true });
+  return result as RsdAnalysis;
 };

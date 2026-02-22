@@ -1,11 +1,5 @@
-import { genAI, jsonModel } from '../lib/gemini';
+import { callAgent } from '../lib/api';
 import { supabase } from '../lib/supabase'; // Assumes standard Supabase client initialization
-
-// Initialize the embedding model
-const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
-
-// Standard text model for synthesis
-const textModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
 export interface MemoryIngestResult {
   success: boolean;
@@ -25,15 +19,24 @@ export async function ingestMemory(text: string, userId: string): Promise<Memory
       
       Text: "${text}"
     `;
-    const summaryResult = await jsonModel.generateContent(summaryPrompt);
-    const parsedSummary = JSON.parse(summaryResult.response.text());
+    const parsedSummary = await callAgent<{ summary: string, action_items: string[] }>({ prompt: summaryPrompt, jsonMode: true });
     
     // Combine for storage
     const richSummary = `${parsedSummary.summary} Actions: ${parsedSummary.action_items.join(', ')}`;
 
     // 2. Generate vector embeddings for the raw content
-    const embeddingResult = await embeddingModel.embedContent(text);
-    const embedding = embeddingResult.embedding.values;
+    // (This would be handled by a backend API endpoint)
+    const embeddingResponse = await fetch('http://localhost:3000/api/embed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text })
+    });
+    
+    if (!embeddingResponse.ok) {
+      throw new Error(`Embedding failed: ${embeddingResponse.status}`);
+    }
+    
+    const { embedding } = await embeddingResponse.json();
 
     // 3. Store in Supabase pgvector
     const { error } = await supabase.from('memory_entries').insert({
@@ -58,8 +61,18 @@ export async function ingestMemory(text: string, userId: string): Promise<Memory
 export async function recallMemory(query: string, userId: string): Promise<string> {
   try {
     // 1. Embed the natural language query
-    const queryEmbeddingResult = await embeddingModel.embedContent(query);
-    const queryEmbedding = queryEmbeddingResult.embedding.values;
+    const embeddingResponse = await fetch('http://localhost:3000/api/embed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: query })
+    });
+    
+    if (!embeddingResponse.ok) {
+      throw new Error(`Embedding failed: ${embeddingResponse.status}`);
+    }
+    
+    const { embedding } = await embeddingResponse.json();
+    const queryEmbedding = embedding;
 
     // 2. Perform Vector Similarity Search via Supabase RPC
     const { data: matches, error } = await supabase.rpc('match_memories', {
@@ -90,8 +103,8 @@ export async function recallMemory(query: string, userId: string): Promise<strin
       User Query: "${query}"
     `;
 
-    const synthesisResult = await textModel.generateContent(synthesisPrompt);
-    return synthesisResult.response.text();
+    const result = await callAgent<{ text: string }>({ prompt: synthesisPrompt, jsonMode: false });
+    return result.text;
   } catch (error) {
     console.error("Memory Recall Error:", error);
     throw new Error("Failed to retrieve information.");

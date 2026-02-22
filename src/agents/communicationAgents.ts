@@ -1,4 +1,4 @@
-import { jsonModel } from '../lib/gemini';
+import { callAgent } from '../lib/api';
 
 export interface ThreadAnalysis {
   summary: string;
@@ -24,15 +24,15 @@ export const analyzeThread = async (threadText: string): Promise<ThreadAnalysis>
       "summary": "A 2-sentence objective summary of the thread.",
       "decisions_made": ["Array of finalized decisions. Empty if none."],
       "action_items": [{"owner": "Name or 'Unassigned'", "task": "Explicit task description"}],
-      "emotional_temperature": "Neutral assessment of the thread's tone (e.g., 'Collaborative', 'Tense', 'Urgent')."
+      "emotional_temperature": "Neutral assessment of the thread's tone (e.g., 'Collaborative', 'Tense', 'Urgent')."}
     }
 
     Thread to analyze:
     "${threadText}"
   `;
 
-  const result = await jsonModel.generateContent(prompt);
-  return JSON.parse(result.response.text()) as ThreadAnalysis;
+  const result = await callAgent<ThreadAnalysis>({ prompt, jsonMode: true });
+  return result as ThreadAnalysis;
 };
 
 export const decodeSocialInteraction = async (interactionText: string): Promise<SocialAnalysis> => {
@@ -52,6 +52,6 @@ export const decodeSocialInteraction = async (interactionText: string): Promise<
     "${interactionText}"
   `;
 
-  const result = await jsonModel.generateContent(prompt);
-  return JSON.parse(result.response.text()) as SocialAnalysis;
+  const result = await callAgent<SocialAnalysis>({ prompt, jsonMode: true });
+  return result as SocialAnalysis;
 };

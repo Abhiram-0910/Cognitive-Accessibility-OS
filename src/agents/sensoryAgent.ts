@@ -1,12 +1,4 @@
-import { genAI } from '../lib/gemini';
-
-// Using 1.5 Pro for deep structural reasoning over large, chaotic DOM text
-const proModel = genAI.getGenerativeModel({
-  model: 'gemini-1.5-pro',
-  generationConfig: {
-    temperature: 0.1, // Strict semantic adherence
-  },
-});
+import { callAgent } from '../lib/api';
 
 const SYSTEM_INSTRUCTION = `
 You are an elite Digital Accessibility Synthesizer. 
@@ -28,8 +20,8 @@ Rules:
 export async function sanitizeWebpage(rawContent: string): Promise<string> {
   try {
     const prompt = `${SYSTEM_INSTRUCTION}\n\nRaw Webpage Data:\n"${rawContent}"`;
-    const result = await proModel.generateContent(prompt);
-    return result.response.text().trim();
+    const result = await callAgent<string>({ prompt, jsonMode: false });
+    return result as string;
   } catch (error) {
     console.error("Sensory Agent Error:", error);
     throw new Error("Failed to sanitize the webpage structure.");

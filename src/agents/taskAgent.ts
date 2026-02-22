@@ -1,4 +1,4 @@
-import { jsonModel } from '../lib/gemini';
+import { callAgent } from '../lib/api';
 
 export interface MicroTask {
   id: string;
@@ -31,11 +31,17 @@ Output strictly as a JSON array of objects matching this schema:
 export async function generateMicroTasks(taskDescription: string): Promise<MicroTask[]> {
   try {
     const prompt = `${SYSTEM_INSTRUCTION}\n\nOverwhelming Task:\n"${taskDescription}"\n\nJSON Output:`;
-    const result = await jsonModel.generateContent(prompt);
-    const responseText = result.response.text();
-    return JSON.parse(responseText) as MicroTask[];
+    
+    // Route securely through the Node.js backend proxy
+    const result = await callAgent<MicroTask[]>({
+      prompt: prompt,
+      model: 'gemini-1.5-flash',
+      jsonMode: true
+    });
+    
+    return result;
   } catch (error) {
     console.error("Task Agent Error:", error);
-    throw new Error("Failed to generate micro-tasks.");
+    throw new Error("Failed to generate micro-tasks via secure proxy.");
   }
 }

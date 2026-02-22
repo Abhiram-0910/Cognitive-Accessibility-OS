@@ -7,7 +7,6 @@ export interface CognitiveMetrics {
   errorRate: number;
   pauseFrequency: number;
   contextSwitches: number;
-  // New Biometric Signals
   facialTension: number; 
   gazeWander: number;
   speechRate: number;
@@ -18,11 +17,13 @@ interface CognitiveState {
   metrics: CognitiveMetrics;
   cognitiveLoadScore: number;
   classification: CognitiveClassification;
+  permissionsGranted: boolean; // <--- NEW STATE
   updateMetrics: (
     metrics: Partial<CognitiveMetrics>,
     score: number,
     classification: CognitiveClassification
   ) => void;
+  setPermissionsGranted: (granted: boolean) => void; // <--- NEW ACTION
 }
 
 export const useCognitiveStore = create<CognitiveState>((set) => ({
@@ -38,10 +39,12 @@ export const useCognitiveStore = create<CognitiveState>((set) => ({
   },
   cognitiveLoadScore: 0,
   classification: 'normal',
+  permissionsGranted: false, // Default to false (Zero-Trust)
   updateMetrics: (newMetrics, score, classification) =>
     set((state) => ({
       metrics: { ...state.metrics, ...newMetrics },
       cognitiveLoadScore: score,
       classification,
     })),
+  setPermissionsGranted: (granted) => set({ permissionsGranted: granted }),
 }));

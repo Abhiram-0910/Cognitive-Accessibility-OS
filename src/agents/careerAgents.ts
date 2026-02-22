@@ -1,4 +1,4 @@
-import { jsonModel } from '../lib/gemini';
+import { callAgent } from '../lib/api';
 
 export interface ReframedTrait {
   traditional_view: string;
@@ -30,8 +30,8 @@ export const reframeTraitForResume = async (trait: string): Promise<ReframedTrai
     Trait to reframe: "${trait}"
   `;
 
-  const result = await jsonModel.generateContent(prompt);
-  return JSON.parse(result.response.text()) as ReframedTrait;
+  const result = await callAgent<ReframedTrait>({ prompt, jsonMode: true });
+  return result as ReframedTrait;
 };
 
 export const analyzeJobDescription = async (jd: string): Promise<RoleAnalysis> => {
@@ -49,6 +49,6 @@ export const analyzeJobDescription = async (jd: string): Promise<RoleAnalysis> =
     Job Description: "${jd}"
   `;
 
-  const result = await jsonModel.generateContent(prompt);
-  return JSON.parse(result.response.text()) as RoleAnalysis;
+  const result = await callAgent<RoleAnalysis>({ prompt, jsonMode: true });
+  return result as RoleAnalysis;
 };

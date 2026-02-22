@@ -1,28 +1,39 @@
 {
   "manifest_version": 3,
-  "name": "NeuroAdaptive Agentic Interceptor",
+  "name": "NeuroAdaptive OS",
   "version": "1.0.0",
-  "description": "Seamlessly intercepts and translates vague corporate communication in Gmail based on your cognitive load.",
+  "description": "Cognitive accessibility layer for modern enterprise tools.",
   "permissions": [
     "storage",
+    "activeTab",
     "scripting"
   ],
   "host_permissions": [
-    "*://mail.google.com/*",
-    "*://localhost:5173/*" 
+    "https://*.slack.com/*",
+    "https://mail.google.com/*",
+    "https://*.atlassian.net/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["*://mail.google.com/*"],
+      "matches": [
+        "https://*.slack.com/*",
+        "https://mail.google.com/*",
+        "https://*.atlassian.net/*"
+      ],
       "js": ["content.js"],
-      "css": ["content.css"],
       "run_at": "document_idle"
     }
   ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content.css"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "action": {
-    "default_title": "NeuroAdaptive OS"
+    "default_title": "NeuroAdaptive OS Options"
   }
 }
