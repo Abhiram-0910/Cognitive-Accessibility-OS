@@ -158,7 +158,7 @@ export const MicroTasker: React.FC = () => {
                   <motion.div
                     key={task.id}
                     layout
-                    variants={itemVariants as any}   {/* ✅ FIXED HERE */}
+                    variants={itemVariants as any}
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
                     className={`p-4 rounded-2xl border-2 transition-colors cursor-pointer flex gap-4 items-center group ${

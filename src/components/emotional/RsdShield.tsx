@@ -8,7 +8,11 @@ interface RsdShieldProps {
   messageText: string;
 }
 
-export const RsdShield: React.FC<RsdShieldProps> = ({ senderName, senderContext, messageText }) => {
+export const RsdShield: React.FC<RsdShieldProps> = ({
+  senderName,
+  senderContext,
+  messageText
+}) => {
   const [analysis, setAnalysis] = useState<RsdAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -23,6 +27,7 @@ export const RsdShield: React.FC<RsdShieldProps> = ({ senderName, senderContext,
         setLoading(false);
       }
     };
+
     scanMessage();
   }, [messageText, senderContext]);
 
@@ -36,17 +41,24 @@ export const RsdShield: React.FC<RsdShieldProps> = ({ senderName, senderContext,
   }
 
   return (
-    <div className={`p-5 rounded-2xl border transition-colors ${
-      analysis?.is_high_risk ? 'bg-white border-amber-200 shadow-sm' : 'bg-white border-slate-100'
-    }`}>
-      
-      {/* RSD Reframing Buffer (Renders before the message) */}
+    <div
+      className={`p-5 rounded-2xl border transition-colors ${
+        analysis?.is_high_risk
+          ? 'bg-white border-amber-200 shadow-sm'
+          : 'bg-white border-slate-100'
+      }`}
+    >
+      {/* RSD Reframing Buffer */}
       {analysis?.is_high_risk && (
         <div className="mb-4 p-3 bg-amber-50 rounded-xl border border-amber-100 flex items-start gap-3">
           <ShieldAlert className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
           <div>
-            <span className="text-xs font-bold text-amber-700 uppercase tracking-wider block mb-1">Context Buffer</span>
-            <p className="text-sm text-amber-900">{analysis.reframed_context}</p>
+            <span className="text-xs font-bold text-amber-700 uppercase tracking-wider block mb-1">
+              Context Buffer
+            </span>
+            <p className="text-sm text-amber-900">
+              {analysis.reframed_context}
+            </p>
           </div>
         </div>
       )}
@@ -56,19 +68,25 @@ export const RsdShield: React.FC<RsdShieldProps> = ({ senderName, senderContext,
         <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0 border border-slate-200">
           <User className="w-5 h-5 text-slate-500" />
         </div>
+
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-semibold text-slate-800 text-sm">{senderName}</span>
+            <span className="font-semibold text-slate-800 text-sm">
+              {senderName}
+            </span>
+
             {!analysis?.is_high_risk && (
               <div title="Low RSD Risk">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
               </div>
             )}
           </div>
-          <p className="text-slate-700 text-sm leading-relaxed">{messageText}</p>
+
+          <p className="text-slate-700 text-sm leading-relaxed">
+            {messageText}
+          </p>
         </div>
       </div>
-
     </div>
   );
 };
