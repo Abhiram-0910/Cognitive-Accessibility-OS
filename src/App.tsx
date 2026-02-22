@@ -57,11 +57,25 @@ const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
   }, []);
 
   useEffect(() => {
+    // Initial Load
     supabase.auth.getSession().then(({ data: { session } }) => {
       checkAuthAndProfile(session);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+    // Subscriptions
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
+      // 🛑 THE SOFT KICK-OUT FIX
+      if (event === 'SIGNED_OUT') {
+        alert("⚠️ Session expired. Please save your work and refresh the page to log in again.");
+        return; // Halt execution. Do NOT update state or kick them out of the current route.
+      }
+      
+      // Quietly update tokens in the background without triggering loading screens
+      if (event === 'TOKEN_REFRESHED') {
+        setSession(currentSession);
+        return;
+      }
+
       setLoading(true);
       checkAuthAndProfile(currentSession);
     });

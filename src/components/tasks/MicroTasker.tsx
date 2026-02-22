@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import confetti from 'canvas-confetti';
+import confetti from 'canvas-confetti'; // Ensure this is explicitly imported
 import { generateMicroTasks, MicroTask } from '../../agents/taskAgent';
 import { Loader2, Zap, Clock, Check, Target } from 'lucide-react';
 
@@ -25,17 +25,18 @@ export const MicroTasker: React.FC = () => {
   };
 
   const triggerConfetti = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Calculate the precise origin point based on where the user clicked the checkbox
     const rect = e.currentTarget.getBoundingClientRect();
     const x = (rect.left + rect.width / 2) / window.innerWidth;
     const y = (rect.top + rect.height / 2) / window.innerHeight;
 
     confetti({
-      particleCount: 40,
-      spread: 60,
+      particleCount: 50,
+      spread: 70,
       origin: { x, y },
       colors: ['#14B8A6', '#3B82F6', '#10B981', '#FCD34D'],
       disableForReducedMotion: true,
-      zIndex: 9999,
+      zIndex: 9999, // Ensure it bursts OVER the OS dashboard
     });
   };
 
@@ -46,7 +47,7 @@ export const MicroTasker: React.FC = () => {
         next.delete(id);
       } else {
         next.add(id);
-        triggerConfetti(e);
+        triggerConfetti(e); // Trigger the physics burst
       }
       return next;
     });
