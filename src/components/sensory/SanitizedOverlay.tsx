@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+import rehypeSanitize from 'rehype-sanitize';
 import { sanitizeWebpage } from '../../agents/sensoryAgent';
 import { X, Type, Search, Loader2, Maximize2, MoveVertical } from 'lucide-react';
 
@@ -22,6 +23,7 @@ export const SanitizedOverlay: React.FC<OverlayProps> = ({ rawText, onClose }) =
         const result = await sanitizeWebpage(rawText);
         setCleanContent(result);
       } catch (error) {
+        console.error('Sanitization error:', error);
         setCleanContent("# Error\nFailed to sanitize the page. It might be too large or complex.");
       } finally {
         setLoading(false);
@@ -33,7 +35,10 @@ export const SanitizedOverlay: React.FC<OverlayProps> = ({ rawText, onClose }) =
   // Lock background scrolling
   useEffect(() => {
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = 'auto'; };
+    return () => { 
+      document.body.style.overflow = 'auto';
+      document.body.style.scrollBehavior = 'smooth';
+    };
   }, []);
 
   const getLineHeightClass = () => {
@@ -95,7 +100,19 @@ export const SanitizedOverlay: React.FC<OverlayProps> = ({ rawText, onClose }) =
           ) : (
             <div className={`max-w-3xl mx-auto text-slate-800 ${getLineHeightClass()} ${useDyslexicFont ? 'font-[OpenDyslexic,sans-serif]' : 'font-sans'}`}>
               <div className="prose prose-lg prose-slate max-w-none prose-headings:font-light prose-headings:tracking-tight prose-a:text-teal-600 prose-strong:text-slate-900 prose-strong:font-semibold">
-                <ReactMarkdown>{cleanContent || ''}</ReactMarkdown>
+                <ReactMarkdown 
+                  rehypePlugins={[rehypeSanitize]}
+                  components={{
+                    // Custom component overrides for additional security
+                    a: ({node, ...props}) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+                    img: () => null, // Block images completely for security
+                    script: () => null,
+                    style: () => null,
+                    iframe: () => null
+                  }}
+                >
+                  {cleanContent || ''}
+                </ReactMarkdown>
               </div>
             </div>
           )}

@@ -1,3 +1,6 @@
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { PromptTemplate } from '@langchain/core/prompts';
+import { StringOutputParser } from '@langchain/core/output_parsers';
 import { vectorStore } from './VectorStore';
 
 type CognitiveState = 'hyperfocus' | 'normal' | 'approaching_overload' | 'overload';
@@ -15,18 +18,19 @@ interface ActionRequest {
 
 export class AgentOrchestrator {
   private userStates: Map<string, TelemetryPayload> = new Map();
+  
+  // LangChain Setup with built-in Exponential Backoff for 429 Rate Limits
+  private llm = new ChatGoogleGenerativeAI({
+    modelName: 'gemini-1.5-flash',
+    maxRetries: 3, // Automatically retries with exponential backoff if rate limited
+    temperature: 0.2,
+  });
 
-  /**
-   * Updates the internal registry with the latest socket.io telemetry.
-   */
   public updateState(telemetry: TelemetryPayload) {
     this.userStates.set(telemetry.userId, telemetry);
     this.evaluateAmbientTriggers(telemetry);
   }
 
-  /**
-   * Ambient orchestration: Triggers background agents automatically when state crosses thresholds.
-   */
   private evaluateAmbientTriggers(telemetry: TelemetryPayload) {
     if (telemetry.state === 'overload') {
       this.triggerSensoryBuffer(telemetry.userId);
@@ -35,25 +39,19 @@ export class AgentOrchestrator {
     }
   }
 
-  /**
-   * Conflict Resolution: Validates explicit user or system requests against their current capacity.
-   */
   public async routeAction(userId: string, request: ActionRequest): Promise<{ status: string, message: string }> {
     const currentState = this.userStates.get(userId)?.state || 'normal';
 
-    // Conflict Resolution Rule 1: Burnout protection overrides Task Initiation
     if (request.type === 'INITIATE_TASK' && currentState === 'overload') {
-      console.log(`[Orchestrator] Blocked task initiation for ${userId}. Routing to Recovery Agent.`);
+      console.log(`[Orchestrator] Blocked task initiation for ${userId}.`);
       return this.triggerRecoveryProtocol(userId);
     }
 
-    // Conflict Resolution Rule 2: Defer communications during Hyperfocus
     if (request.type === 'PROCESS_COMMUNICATION' && currentState === 'hyperfocus') {
-      console.log(`[Orchestrator] Buffered communication for ${userId} to preserve flow state.`);
+      console.log(`[Orchestrator] Buffered communication for ${userId} to preserve flow.`);
       return { status: 'buffered', message: 'Message cached. Flow state preserved.' };
     }
 
-    // Default Routing
     switch (request.type) {
       case 'PROCESS_COMMUNICATION':
         return this.executeCommunicationAgent(userId, request.payload);
@@ -64,22 +62,31 @@ export class AgentOrchestrator {
     }
   }
 
-  // --- Sub-Agent Execution Wrappers ---
-
   private async executeCommunicationAgent(userId: string, payload: any) {
-    // Check Redis cache first before burning an API call
     const cached = await vectorStore.getCachedResponse(payload.text, 'communication_translation');
     if (cached) {
       console.log(`[Orchestrator] Cache hit for ${userId} communication.`);
       return { status: 'success', message: cached };
     }
 
-    // Simulated Agent Call...
-    console.log(`[Orchestrator] Executing translation for ${userId}`);
-    const result = "Translated corporate context."; 
-    await vectorStore.cacheResponse(payload.text, 'communication_translation', result);
+    console.log(`[Orchestrator] Executing LangChain translation for ${userId}`);
     
-    return { status: 'success', message: result };
+    // LangChain Pipeline
+    const prompt = PromptTemplate.fromTemplate(
+      `Translate the following blunt corporate message into polite, collaborative language. 
+      Message: {message}`
+    );
+    
+    const chain = prompt.pipe(this.llm).pipe(new StringOutputParser());
+    
+    try {
+      const result = await chain.invoke({ message: payload.text });
+      await vectorStore.cacheResponse(payload.text, 'communication_translation', result);
+      return { status: 'success', message: result };
+    } catch (error) {
+      console.error('[LangChain Error]:', error);
+      return { status: 'error', message: 'Translation failed due to high cognitive load on the server.' };
+    }
   }
 
   private async executeTaskAgent(userId: string, payload: any) {
@@ -87,21 +94,10 @@ export class AgentOrchestrator {
     return { status: 'success', message: 'Task decomposed into micro-steps.' };
   }
 
-  private triggerSensoryBuffer(userId: string) {
-    console.log(`[Orchestrator] Alerting extension to activate Digital Noise Canceling for ${userId}`);
-    // Emit WebSocket event to specific user room
-  }
-
-  private triggerSlackSnooze(userId: string) {
-    console.log(`[Orchestrator] Setting Slack DND to preserve Hyperfocus for ${userId}`);
-    // Call Slack Integrator
-  }
-
+  private triggerSensoryBuffer(userId: string) {}
+  private triggerSlackSnooze(userId: string) {}
   private triggerRecoveryProtocol(userId: string) {
-    return { 
-      status: 'intervention', 
-      message: 'Task blocked. Your cognitive load is critical. A 5-minute breathing buffer has been initiated.' 
-    };
+    return { status: 'intervention', message: 'Task blocked. Load is critical. 5-minute breathing buffer initiated.' };
   }
 }
 

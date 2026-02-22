@@ -2,17 +2,20 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useCognitiveStore, CognitiveClassification } from '../stores/cognitiveStore';
 import { BiometricVisionEngine } from '../lib/biometrics/faceMesh';
 import { VoiceBiomarkerEngine } from '../lib/biometrics/voiceBiomarkers';
+import { initCognitiveModel, predictLoadScore } from '../lib/ml/cognitiveModel';
 
 // Configuration for the monitoring window
 const EVALUATION_INTERVAL_MS = 2000; // Evaluate and debounce updates every 2 seconds
 const PAUSE_THRESHOLD_MS = 3000; // >3s between keystrokes counts as a cognitive pause
 const ROLLING_WINDOW_MS = 60000; // Calculate KPM over a 1-minute rolling window
 
-// ⚠️ REPLACE THIS with your actual extension ID from chrome://extensions
-const EXTENSION_ID = "your_unpacked_extension_id_here"; 
-
 export const useCognitiveMonitor = () => {
   const updateMetrics = useCognitiveStore((state) => state.updateMetrics);
+
+  // Initialize the TF.js model on mount
+  useEffect(() => {
+    initCognitiveModel().catch(console.error);
+  }, []);
 
   // Mutable refs for high-frequency tracking (prevents React render flooding)
   const metrics = useRef({
@@ -22,9 +25,7 @@ export const useCognitiveMonitor = () => {
     contextSwitches: 0,
     // Biometric metrics (continuously updated by engines)
     facialTension: 0,
-    gazeWander: 0,
-    speechRate: 0,
-    vocalEnergy: 0,
+    vocalEnergy: 0
   });
 
   const lastKeystrokeTime = useRef<number>(Date.now());
@@ -51,18 +52,17 @@ export const useCognitiveMonitor = () => {
     );
     const kpm = keystrokeTimestamps.current.length;
 
-    // 3. Algorithm: weighted combination of all cognitive & biometric signals
-    const errorPercentage = errorRate * 100;
-    
-    let rawScore =
-      errorPercentage * 0.20 + 
-      currentMetrics.pauseFrequency * 10 +
-      currentMetrics.contextSwitches * 15 +
-      currentMetrics.facialTension * 0.3 +
-      currentMetrics.vocalEnergy * 0.2;
+    // 3. Use TensorFlow.js Edge Model instead of hardcoded math
+    const features = [
+      kpm,
+      errorRate,
+      currentMetrics.pauseFrequency,
+      currentMetrics.contextSwitches,
+      currentMetrics.facialTension,
+      currentMetrics.vocalEnergy
+    ];
 
-    // Cap the score between 0 and 100
-    const score = Math.min(100, Math.max(0, Math.round(rawScore)));
+    const score = predictLoadScore(features);
 
     // 4. Map to Classifications
     let classification: CognitiveClassification = 'normal';
@@ -79,30 +79,13 @@ export const useCognitiveMonitor = () => {
         pauseFrequency: currentMetrics.pauseFrequency,
         contextSwitches: currentMetrics.contextSwitches,
         facialTension: currentMetrics.facialTension,
-        gazeWander: currentMetrics.gazeWander,
-        speechRate: currentMetrics.speechRate,
         vocalEnergy: currentMetrics.vocalEnergy,
       },
       score,
       classification
     );
 
-    // 6. Broadcast to Chrome Extension (Agentic Interceptor)
-    const win = window as any;
-    if (win.chrome && win.chrome.runtime) {
-      try {
-        win.chrome.runtime.sendMessage(EXTENSION_ID, {
-          type: 'SYNC_COGNITIVE_LOAD',
-          payload: { score, classification }
-        }).catch(() => { 
-          // Silently ignore errors if the extension is disabled or uninstalled
-        });
-      } catch (err) {
-        console.warn("Failed to sync with NeuroAdaptive extension:", err);
-      }
-    }
-
-    // 7. Reset cumulative counters for the next evaluation window
+    // 6. Reset cumulative counters for the next evaluation window
     // Note: Biometric metrics are continuously updated by engines, so we don't reset them here
     metrics.current.pauseFrequency = 0;
     metrics.current.contextSwitches = 0;
@@ -122,12 +105,10 @@ export const useCognitiveMonitor = () => {
       // Start Face Tracking
       await visionEngine.current.startAnalysis(videoElement, (bioMetrics) => {
         metrics.current.facialTension = bioMetrics.tension;
-        metrics.current.gazeWander = bioMetrics.gazeWander;
       });
 
       // Start Voice Tracking
       await voiceEngine.current.startAnalysis((voiceMetrics) => {
-        metrics.current.speechRate = voiceMetrics.speechRate;
         metrics.current.vocalEnergy = voiceMetrics.vocalEnergy;
       });
       
@@ -153,24 +134,33 @@ export const useCognitiveMonitor = () => {
   }, []);
 
   useEffect(() => {
-    // Event Handlers
+    let ticking = false;
+
+    // High-performance throttling for DOM events to prevent JS main thread lockup
     const handleKeyDown = (e: KeyboardEvent) => {
-      const now = Date.now();
-      const timeSinceLastKey = now - lastKeystrokeTime.current;
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          const now = Date.now();
+          const timeSinceLastKey = now - lastKeystrokeTime.current;
 
-      // Track Pause Frequency
-      if (timeSinceLastKey > PAUSE_THRESHOLD_MS) {
-        metrics.current.pauseFrequency += 1;
-      }
+          // Track Pause Frequency
+          if (timeSinceLastKey > PAUSE_THRESHOLD_MS) {
+            metrics.current.pauseFrequency += 1;
+          }
 
-      // Track Error Rate & Volume (Privacy-first: only checking if it's a Backspace/Delete)
-      if (e.key === 'Backspace' || e.key === 'Delete') {
-        metrics.current.backspaces += 1;
+          // Track Error Rate & Volume (Privacy-first: only checking if it's a Backspace/Delete)
+          if (e.key === 'Backspace' || e.key === 'Delete') {
+            metrics.current.backspaces += 1;
+          }
+          
+          metrics.current.totalKeystrokes += 1;
+          keystrokeTimestamps.current.push(now);
+          lastKeystrokeTime.current = now;
+          
+          ticking = false;
+        });
+        ticking = true;
       }
-      
-      metrics.current.totalKeystrokes += 1;
-      keystrokeTimestamps.current.push(now);
-      lastKeystrokeTime.current = now;
     };
 
     const handleVisibilityChange = () => {

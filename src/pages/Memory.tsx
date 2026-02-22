@@ -1,25 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { genAI } from '../lib/gemini';
 import { Loader2, Search, BrainCircuit, CheckSquare } from 'lucide-react';
-
-const textModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
 
 export const Memory: React.FC<{ userId: string }> = ({ userId }) => {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [answer, setAnswer] = useState<string | null>(null);
+  const [answer, setAnswer] = useState<string>('');
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
     setLoading(true);
-    setAnswer(null);
+    setAnswer('');
+    setStreamError(null);
+    
+    // Clear any previous abort controller
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    // Create new abort controller for this request
+    abortControllerRef.current = new AbortController();
 
     try {
       // 1. Embed the user's query
-      const embeddingResult = await embeddingModel.embedContent(query);
-      const queryEmbedding = embeddingResult.embedding.values;
+      const embeddingResponse = await fetch('http://localhost:3000/api/embed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: query }),
+        signal: abortControllerRef.current.signal
+      });
+
+      if (!embeddingResponse.ok) {
+        throw new Error(`Embedding failed: ${embeddingResponse.status}`);
+      }
+
+      const { embedding } = await embeddingResponse.json();
+      const queryEmbedding = embedding;
 
       // 2. Intent Routing: Is this an action item request?
       const isActionItemQuery = query.toLowerCase().includes('action item') || 
@@ -45,7 +63,7 @@ export const Memory: React.FC<{ userId: string }> = ({ userId }) => {
 
       const contextStr = matches.map((m: any) => m.content).join('\n\n');
 
-      // 4. Synthesize with Gemini based on intent
+      // 4. Prepare prompt based on intent
       let prompt = '';
       if (isActionItemQuery) {
         prompt = `
@@ -65,16 +83,89 @@ export const Memory: React.FC<{ userId: string }> = ({ userId }) => {
         `;
       }
 
-      const synthesisResult = await textModel.generateContent(prompt);
-      setAnswer(synthesisResult.response.text().trim());
+      // 5. Consume the HTTP Stream from our backend
+      const streamResponse = await fetch('http://localhost:3000/api/agents/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          prompt, 
+          model: 'gemini-1.5-flash' 
+        }),
+        signal: abortControllerRef.current.signal
+      });
 
-    } catch (error) {
-      console.error("Memory Retrieval Error:", error);
-      setAnswer("Failed to access memory architecture.");
-    } finally {
+      if (!streamResponse.body) {
+        throw new Error("ReadableStream not supported in this browser.");
+      }
+
+      const reader = streamResponse.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Process all complete SSE messages in the buffer
+        let position = 0;
+        let boundary = '\n\n';
+        
+        while ((position = buffer.indexOf(boundary)) !== -1) {
+          const message = buffer.slice(0, position);
+          buffer = buffer.slice(position + boundary.length);
+          
+          if (message.startsWith('data: ')) {
+            const dataStr = message.replace('data: ', '').trim();
+            
+            if (dataStr === '[DONE]') {
+              setLoading(false);
+              return;
+            }
+            
+            try {
+              const parsed = JSON.parse(dataStr);
+              
+              if (parsed.error) {
+                setStreamError(parsed.error);
+                setLoading(false);
+                return;
+              }
+              
+              if (parsed.text) {
+                // Append chunk to the UI state instantly
+                setAnswer(prev => prev + parsed.text);
+              }
+            } catch (e) {
+              // Ignore parse errors for partial chunks
+              continue;
+            }
+          }
+        }
+      }
+
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log('Search request aborted');
+      } else {
+        console.error("Memory Retrieval Error:", error);
+        setStreamError(error.message || "Failed to access memory architecture.");
+      }
       setLoading(false);
+    } finally {
+      abortControllerRef.current = null;
     }
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   return (
     <div className="max-w-3xl mx-auto p-8 font-sans">
@@ -99,11 +190,18 @@ export const Memory: React.FC<{ userId: string }> = ({ userId }) => {
         <button
           onClick={handleSearch}
           disabled={loading || !query}
-          className="absolute right-3 top-3 bg-slate-800 hover:bg-slate-900 text-white px-6 py-2 rounded-xl font-medium transition-colors disabled:opacity-50"
+          className="absolute right-3 top-3 bg-slate-800 hover:bg-slate-900 text-white px-6 py-2 rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
         >
           {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Recall"}
+          {loading && <span className="text-xs opacity-70">Streaming...</span>}
         </button>
       </div>
+
+      {streamError && (
+        <div className="p-4 mb-4 bg-red-50 border border-red-100 rounded-xl text-red-700">
+          {streamError}
+        </div>
+      )}
 
       {answer && (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -117,11 +215,49 @@ export const Memory: React.FC<{ userId: string }> = ({ userId }) => {
             {/* Render the bolded markdown response safely */}
             <div 
               className="text-slate-800 text-lg leading-relaxed prose prose-slate prose-strong:text-teal-900"
-              dangerouslySetInnerHTML={{ __html: answer.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} 
+              dangerouslySetInnerHTML={{ 
+                __html: answer.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') 
+              }} 
             />
           </div>
+        </div>
+      )}
+      
+      {loading && !answer && (
+        <div className="text-center py-8 text-slate-500">
+          <p>Streaming response from neural memory network...</p>
         </div>
       )}
     </div>
   );
 };
+
+// Add a helper endpoint for embedding if needed (optional)
+// This would go in your API routes, not in this component
+/*
+// In server/src/routes/embed.ts
+import { Router, Request, Response } from 'express';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+const router = Router();
+const apiKey = process.env.GEMINI_API_KEY || '';
+const genAI = new GoogleGenerativeAI(apiKey);
+const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+
+router.post('/', async (req: Request, res: Response) => {
+  try {
+    const { text } = req.body;
+    if (!text) {
+      return res.status(400).json({ error: 'Text is required' });
+    }
+    
+    const embeddingResult = await embeddingModel.embedContent(text);
+    res.json({ embedding: embeddingResult.embedding.values });
+  } catch (error) {
+    console.error('Embedding error:', error);
+    res.status(500).json({ error: 'Failed to generate embedding' });
+  }
+});
+
+export const embedRoutes = router;
+*/

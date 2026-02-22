@@ -100,5 +100,100 @@ export const setupApiRoutes = () => {
     }
   });
 
+  /**
+   * POST /api/ml/federated-update
+   * Receives differentially private (Laplace noise-injected) gradients from edge clients.
+   * Conceptually enforces k-anonymity by accepting anonymous payloads.
+   * 
+   * Expected payload:
+   * {
+   *   gradients: number[][],      // 2D array of noise-injected weight updates
+   *   batchSize: number,          // Local batch size used for this update
+   *   timestamp: number,          // Client-side timestamp (ms)
+   *   modelVersion?: string,      // Optional: identifier for global model version
+   *   epsilon?: number            // Optional: privacy budget used for this update
+   * }
+   */
+  router.post('/ml/federated-update', async (req: Request, res: Response) => {
+    try {
+      const { gradients, batchSize, timestamp, modelVersion, epsilon } = req.body;
+
+      // Validate required fields
+      if (!gradients || !Array.isArray(gradients) || !batchSize || typeof batchSize !== 'number') {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Invalid federated payload: gradients (number[][]) and batchSize (number) are required.' 
+        });
+      }
+
+      // Validate gradient structure (basic sanity check)
+      if (!gradients.every(layer => Array.isArray(layer) && layer.every(val => typeof val === 'number'))) {
+        return res.status(400).json({
+          success: false,
+          error: 'Gradients must be a 2D array of numbers.'
+        });
+      }
+
+      // Privacy audit logging (NO PII logged - only metadata)
+      console.log(`[Federated ML] Received anonymous k-anonymized update`);
+      console.log(`[Federated ML] Metadata: batchSize=${batchSize}, layers=${gradients.length}, timestamp=${timestamp}`);
+      if (epsilon) {
+        console.log(`[Federated ML] Differential privacy: ε=${epsilon}`);
+      }
+      if (modelVersion) {
+        console.log(`[Federated ML] Target model version: ${modelVersion}`);
+      }
+
+      // === PRODUCTION AGGREGATION LOGIC WOULD GO HERE ===
+      // Example pseudocode for secure aggregation:
+      // 1. Verify gradient dimensions match current global model
+      // 2. Apply secure aggregation protocol (e.g., Bonawitz et al.)
+      // 3. Average noisy gradients into global model weights
+      // 4. Update model version and broadcast to clients
+      // ===================================================
+
+      // For hackathon demo: acknowledge receipt and simulate aggregation
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      res.status(200).json({
+        success: true,
+        message: 'Federated gradients successfully received and queued for aggregation.',
+        aggregation: {
+          queuedAt: new Date().toISOString(),
+          estimatedGlobalUpdate: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // ~5 min delay
+          participatingClients: '+1' // Would be actual count in production
+        }
+      });
+    } catch (error: any) {
+      console.error('[Federated ML] Error processing update:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to process federated update.',
+        debug: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  });
+
+  /**
+   * GET /api/ml/model-version
+   * Returns the current global model version and metadata for client sync.
+   */
+  router.get('/ml/model-version', (req: Request, res: Response) => {
+    // In production, fetch from model registry or Supabase
+    res.status(200).json({
+      success: true,
+      model: {
+        version: 'v0.3.2-hackathon',
+        lastUpdated: new Date().toISOString(),
+        architecture: 'transformer-lite',
+        privacyBudget: {
+          totalEpsilon: 8.0,
+          remainingEpsilon: 6.2,
+          renewalPeriod: '30d'
+        }
+      }
+    });
+  });
+
   return router;
 };

@@ -1,91 +1,112 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Wind, X } from 'lucide-react';
+import { Wind, Play, Square } from 'lucide-react';
 
 export const RegulationCompanion: React.FC = () => {
-  const [text, setText] = useState('');
-  const [isFlooded, setIsFlooded] = useState(false);
-  const [showGrounding, setShowGrounding] = useState(false);
-  
-  // Heuristic Trackers
-  const lastKeyTime = useRef<number>(Date.now());
-  const rapidKeystrokes = useRef<number>(0);
-  
+  const [isActive, setIsActive] = useState(false);
+  const [step, setStep] = useState(5);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const oscillatorsRef = useRef<OscillatorNode[]>([]);
+
+  // Procedural Binaural Audio Generation
+  const startAudioHum = () => {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+
+    const ctx = new AudioContext();
+    audioCtxRef.current = ctx;
+
+    // Master Gain (Volume control)
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0, ctx.currentTime);
+    masterGain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 2); // Soft fade-in
+    masterGain.connect(ctx.destination);
+
+    // Left Ear (428 Hz)
+    const oscLeft = ctx.createOscillator();
+    const panLeft = ctx.createStereoPanner();
+    panLeft.pan.value = -1;
+    oscLeft.type = 'sine';
+    oscLeft.frequency.value = 428;
+    oscLeft.connect(panLeft);
+    panLeft.connect(masterGain);
+
+    // Right Ear (436 Hz) - Creates an 8Hz Alpha Brainwave Binaural Beat
+    const oscRight = ctx.createOscillator();
+    const panRight = ctx.createStereoPanner();
+    panRight.pan.value = 1;
+    oscRight.type = 'sine';
+    oscRight.frequency.value = 436;
+    oscRight.connect(panRight);
+    panRight.connect(masterGain);
+
+    oscLeft.start();
+    oscRight.start();
+    oscillatorsRef.current = [oscLeft, oscRight];
+  };
+
+  const stopAudioHum = () => {
+    if (audioCtxRef.current) {
+      // Soft fade-out
+      const masterGain = audioCtxRef.current.createGain();
+      masterGain.gain.setValueAtTime(0.15, audioCtxRef.current.currentTime);
+      masterGain.gain.linearRampToValueAtTime(0, audioCtxRef.current.currentTime + 1);
+      
+      setTimeout(() => {
+        oscillatorsRef.current.forEach(osc => osc.stop());
+        audioCtxRef.current?.close();
+        audioCtxRef.current = null;
+      }, 1000);
+    }
+  };
+
   useEffect(() => {
-    // Basic local heuristics for emotional flooding:
-    // 1. High density of exclamation/question marks
-    const punctuationDensity = (text.match(/[!?]{2,}/g) || []).length;
-    // 2. All caps phrases
-    const capsDensity = (text.match(/\b[A-Z]{4,}\b/g) || []).length;
-    // 3. Absolute words often used in distress
-    const absoluteWords = (text.match(/\b(always|never|impossible|ruined|hate)\b/gi) || []).length;
-
-    if (punctuationDensity > 1 || capsDensity > 2 || absoluteWords > 1 || rapidKeystrokes.current > 30) {
-      if (!isFlooded) setIsFlooded(true);
-    } else {
-      setIsFlooded(false);
+    let interval: NodeJS.Timeout;
+    if (isActive && step > 0) {
+      interval = setInterval(() => setStep(s => s - 1), 12000); // 12 seconds per sense
+    } else if (step === 0) {
+      setIsActive(false);
+      stopAudioHum();
+      setStep(5);
     }
-  }, [text, isFlooded]);
+    return () => clearInterval(interval);
+  }, [isActive, step]);
 
-  const handleKeyDown = () => {
-    const now = Date.now();
-    if (now - lastKeyTime.current < 100) { // Extremely fast typing (often anger/panic)
-      rapidKeystrokes.current += 1;
+  const toggleExercise = () => {
+    if (isActive) {
+      setIsActive(false);
+      stopAudioHum();
+      setStep(5);
     } else {
-      rapidKeystrokes.current = Math.max(0, rapidKeystrokes.current - 1); // Decay
+      setIsActive(true);
+      startAudioHum();
     }
-    lastKeyTime.current = now;
   };
 
   return (
-    <div className="relative w-full mt-6 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-      <h3 className="text-sm font-semibold text-slate-800 tracking-wide mb-4">Draft Important Message</h3>
-      
-      <div className="relative">
-        <textarea
-          className={`w-full p-4 bg-slate-50 border rounded-xl focus:outline-none focus:ring-2 text-slate-700 resize-none text-sm transition-colors ${
-            isFlooded ? 'border-amber-300 focus:ring-amber-400' : 'border-slate-200 focus:ring-teal-400'
-          }`}
-          rows={6}
-          placeholder="Draft your reply here..."
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-
-        {/* Passive Intervention Overlay */}
-        {isFlooded && !showGrounding && (
-          <div className="absolute bottom-4 right-4 animate-in fade-in slide-in-from-bottom-2">
-            <button
-              onClick={() => setShowGrounding(true)}
-              className="px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-bold rounded-lg shadow-sm flex items-center gap-2 transition-colors"
-            >
-              <Wind className="w-4 h-4" /> High emotion detected. Pause?
-            </button>
-          </div>
-        )}
+    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+          <Wind className="w-4 h-4 text-teal-500" /> Grounding Protocol
+        </h3>
+        <button onClick={toggleExercise} className="text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1.5 rounded-lg flex items-center gap-1">
+          {isActive ? <><Square className="w-3 h-3"/> Stop</> : <><Play className="w-3 h-3"/> Start</>}
+        </button>
       </div>
 
-      {/* 5-4-3-2-1 Grounding Modal */}
-      {showGrounding && (
-        <div className="absolute inset-0 z-10 bg-white/95 backdrop-blur-sm rounded-3xl p-8 flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-300">
-          <button 
-            onClick={() => { setShowGrounding(false); rapidKeystrokes.current = 0; setIsFlooded(false); }}
-            className="absolute top-4 right-4 p-2 text-slate-400 hover:bg-slate-100 rounded-full"
-          >
-            <X className="w-5 h-5" />
-          </button>
-          
-          <Wind className="w-10 h-10 text-teal-500 mb-4 animate-pulse" />
-          <h4 className="text-lg font-medium text-slate-800 mb-6">Let's step back for a moment.</h4>
-          
-          <div className="space-y-3 w-full max-w-sm text-sm text-slate-600">
-            <div className="flex gap-3 items-center"><span className="text-teal-500 font-bold text-lg">5</span> things you can see around you.</div>
-            <div className="flex gap-3 items-center"><span className="text-teal-500 font-bold text-lg">4</span> things you can physically feel.</div>
-            <div className="flex gap-3 items-center"><span className="text-teal-500 font-bold text-lg">3</span> things you can hear right now.</div>
-            <div className="flex gap-3 items-center"><span className="text-teal-500 font-bold text-lg">2</span> things you can smell.</div>
-            <div className="flex gap-3 items-center"><span className="text-teal-500 font-bold text-lg">1</span> slow, deep breath.</div>
-          </div>
+      {isActive ? (
+        <div className="text-center py-6 animate-in fade-in zoom-in-95 duration-700">
+          <div className="text-5xl font-light text-teal-500 mb-2 tabular-nums">{step}</div>
+          <p className="text-sm text-slate-600 font-medium">
+            {step === 5 && "Things you can see around you."}
+            {step === 4 && "Things you can physically feel."}
+            {step === 3 && "Things you can hear right now."}
+            {step === 2 && "Things you can smell."}
+            {step === 1 && "Thing you can taste."}
+          </p>
+          <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-6">Binaural 432Hz Active</p>
         </div>
+      ) : (
+        <p className="text-sm text-slate-500 text-center py-4">Trigger the 5-4-3-2-1 sensory countdown to interrupt an overload spiral.</p>
       )}
     </div>
   );
