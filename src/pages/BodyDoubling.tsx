@@ -120,7 +120,7 @@ export const BodyDoubling: React.FC = () => {
               spawns a room if the deterministic room URL doesn't exist yet.
           */}
           <iframe 
-            src={`https://your-domain.daily.co/${activeRoomId}`} 
+            src={`https://meet.jit.si/neuroadapt-${activeRoomId}`}
             className="w-full h-full border-0 absolute inset-0"
             allow="camera; microphone; fullscreen; display-capture"
             title="Secure Focus Video Session"
