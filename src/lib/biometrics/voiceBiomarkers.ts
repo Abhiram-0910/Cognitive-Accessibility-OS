@@ -1,6 +1,9 @@
+// 🛑 GLOBAL SINGLETON: Hard-prevents max browser AudioContext limitation errors
+let globalAudioContext: AudioContext | null = null;
+
 export class VoiceBiomarkerEngine {
-  private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
+  private sourceNode: MediaStreamAudioSourceNode | null = null;
   private recognition: any = null; 
   private isRunning = false;
   private wordCount = 0;
@@ -8,7 +11,6 @@ export class VoiceBiomarkerEngine {
   private mediaStream: MediaStream | null = null;
 
   async startAnalysis(onTick: (metrics: { speechRate: number, vocalEnergy: number }) => void) {
-    // Prevent hardware exhaustion if called multiple times rapidly
     if (this.isRunning) return; 
     
     this.isRunning = true;
@@ -18,18 +20,22 @@ export class VoiceBiomarkerEngine {
     try {
       this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      // Re-use or instantiate safely
-      if (!this.audioContext) {
-        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      // Initialize the global singleton if it doesn't exist
+      if (!globalAudioContext) {
+        globalAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
       
-      const source = this.audioContext.createMediaStreamSource(this.mediaStream);
-      this.analyser = this.audioContext.createAnalyser();
+      // Awaken the audio context if it was previously suspended
+      if (globalAudioContext.state === 'suspended') {
+        await globalAudioContext.resume();
+      }
+      
+      this.sourceNode = globalAudioContext.createMediaStreamSource(this.mediaStream);
+      this.analyser = globalAudioContext.createAnalyser();
       this.analyser.fftSize = 256;
-      source.connect(this.analyser);
+      this.sourceNode.connect(this.analyser);
       const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
 
-      // GRACEFUL DEGRADATION: Check for browser compatibility
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       
       if (SpeechRecognition) {
@@ -53,7 +59,6 @@ export class VoiceBiomarkerEngine {
         this.recognition.start();
       } else {
         console.warn("[NeuroAdaptive] Web Speech API not supported in this browser. Tracking vocal energy only.");
-        // Fallback: Use setInterval to tick acoustic energy only, setting WPM to 0
         const fallbackInterval = setInterval(() => {
           if (this.isRunning) {
             this.calculateEnergyAndEmit(dataArray, 0, onTick);
@@ -82,7 +87,6 @@ export class VoiceBiomarkerEngine {
     onTick({ speechRate: wpm, vocalEnergy: vocalEnergy });
   }
 
-  // FIXED: Explicitly await hardware release to prevent Context Exhaustion
   async stop() {
     this.isRunning = false;
     
@@ -91,14 +95,20 @@ export class VoiceBiomarkerEngine {
       this.recognition = null;
     }
 
+    // Completely release the microphone hardware light
     if (this.mediaStream) {
       this.mediaStream.getTracks().forEach(track => track.stop());
       this.mediaStream = null;
     }
 
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-      await this.audioContext.close();
-      this.audioContext = null;
+    if (this.sourceNode) {
+      this.sourceNode.disconnect();
+      this.sourceNode = null;
+    }
+
+    // Suspend rather than close to safely preserve the Singleton
+    if (globalAudioContext && globalAudioContext.state === 'running') {
+      await globalAudioContext.suspend();
     }
     
     this.analyser = null;

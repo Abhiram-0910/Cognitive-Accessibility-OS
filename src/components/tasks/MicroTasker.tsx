@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import confetti from 'canvas-confetti'; // Ensure this is explicitly imported
+import confetti from 'canvas-confetti';
 import { generateMicroTasks, MicroTask } from '../../agents/taskAgent';
 import { Loader2, Zap, Clock, Check, Target } from 'lucide-react';
 
@@ -9,6 +9,9 @@ export const MicroTasker: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [tasks, setTasks] = useState<MicroTask[]>([]);
   const [completed, setCompleted] = useState<Set<string>>(new Set());
+  
+  // STATE LOCK: Prevents double-click race conditions
+  const [isAnimating, setIsAnimating] = useState(false);
 
   const handleDeconstruct = async () => {
     if (!input.trim()) return;
@@ -25,7 +28,6 @@ export const MicroTasker: React.FC = () => {
   };
 
   const triggerConfetti = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Calculate the precise origin point based on where the user clicked the checkbox
     const rect = e.currentTarget.getBoundingClientRect();
     const x = (rect.left + rect.width / 2) / window.innerWidth;
     const y = (rect.top + rect.height / 2) / window.innerHeight;
@@ -36,18 +38,25 @@ export const MicroTasker: React.FC = () => {
       origin: { x, y },
       colors: ['#14B8A6', '#3B82F6', '#10B981', '#FCD34D'],
       disableForReducedMotion: true,
-      zIndex: 9999, // Ensure it bursts OVER the OS dashboard
+      zIndex: 9999,
     });
   };
 
   const toggleTask = (id: string, e: React.MouseEvent<HTMLDivElement>) => {
+    // 🛑 If currently firing confetti/animating, ignore rapid clicks
+    if (isAnimating) return;
+
     setCompleted((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
       } else {
         next.add(id);
-        triggerConfetti(e); // Trigger the physics burst
+        triggerConfetti(e);
+        
+        // Lock the UI for 1.5s to let animations resolve gracefully
+        setIsAnimating(true);
+        setTimeout(() => setIsAnimating(false), 1500);
       }
       return next;
     });
@@ -90,7 +99,6 @@ export const MicroTasker: React.FC = () => {
         Momentum Architect
       </h3>
 
-      {/* Input Area */}
       <div className="flex gap-3 relative z-10">
         <input
           type="text"
@@ -122,7 +130,6 @@ export const MicroTasker: React.FC = () => {
             exit={{ opacity: 0, height: 0 }}
             className="mt-8"
           >
-            {/* Progress Bar */}
             <div className="mb-6">
               <div className="flex justify-between text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
                 <span>Momentum</span>
@@ -144,7 +151,6 @@ export const MicroTasker: React.FC = () => {
               </div>
             </div>
 
-            {/* Task List */}
             <motion.div
               variants={containerVariants}
               initial="hidden"
@@ -160,9 +166,11 @@ export const MicroTasker: React.FC = () => {
                     key={task.id}
                     layout
                     variants={itemVariants as any}
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
-                    className={`p-4 rounded-2xl border-2 transition-colors cursor-pointer flex gap-4 items-center group ${
+                    whileHover={!isAnimating ? { scale: 1.01 } : {}}
+                    whileTap={!isAnimating ? { scale: 0.99 } : {}}
+                    className={`p-4 rounded-2xl border-2 transition-colors flex gap-4 items-center group ${
+                      isAnimating ? 'cursor-wait pointer-events-none' : 'cursor-pointer'
+                    } ${
                       isDone
                         ? 'bg-slate-50 border-slate-100 opacity-60'
                         : isFirst && !isDone
@@ -171,7 +179,6 @@ export const MicroTasker: React.FC = () => {
                     }`}
                     onClick={(e) => toggleTask(task.id, e)}
                   >
-                    {/* Checkbox */}
                     <motion.div
                       layout
                       initial={false}

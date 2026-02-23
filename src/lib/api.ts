@@ -9,7 +9,7 @@ export interface AgentRequest {
 
 /**
  * Securely proxies LLM requests through our Node.js backend.
- * Automatically parses JSON outputs if jsonMode is true.
+ * Automatically parses JSON outputs if jsonMode is true, with strict LLM hallucination armor.
  */
 export const callAgent = async <T>(request: AgentRequest): Promise<T> => {
   try {
@@ -33,7 +33,15 @@ export const callAgent = async <T>(request: AgentRequest): Promise<T> => {
 
     // Parse the stringified JSON returned by Gemini if jsonMode was enabled
     if (request.jsonMode !== false) {
-      return JSON.parse(result.data) as T;
+      try {
+        // LLM Hallucination Armor: Strip markdown formatting blocks if present
+        let cleanData = typeof result.data === 'string' ? result.data : JSON.stringify(result.data);
+        cleanData = cleanData.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
+        return JSON.parse(cleanData) as T;
+      } catch (parseError) {
+        console.error('Failed to parse Agent JSON response:', result.data);
+        throw new Error("Received malformed data from the cognitive engine.");
+      }
     }
     
     return result.data as unknown as T;

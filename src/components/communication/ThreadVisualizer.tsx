@@ -8,7 +8,7 @@ export const ThreadVisualizer: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [graphCode, setGraphCode] = useState<string | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
-  
+
   const mermaidRef = useRef<HTMLDivElement>(null);
 
   // Initialize Mermaid configuration
@@ -27,37 +27,66 @@ export const ThreadVisualizer: React.FC = () => {
       },
       flowchart: {
         htmlLabels: true,
-        curve: 'basis', // Smooth, calming lines
+        curve: 'basis',
       },
     });
   }, []);
 
-  // Dynamically render the graph when code updates
+  // ✅ UPDATED: Strict validation + graceful error handling
   useEffect(() => {
+    let isMounted = true;
+
     const renderGraph = async () => {
       if (graphCode && mermaidRef.current) {
         setRenderError(null);
+
         try {
-          // Clear previous render
+          // 1. Clear previous render
           mermaidRef.current.innerHTML = '';
-          // Generate new SVG
-          const { svg } = await mermaid.render('mermaid-dynamic-graph', graphCode);
-          mermaidRef.current.innerHTML = svg;
+
+          // 2. Strict syntax validation
+          await mermaid.parse(graphCode);
+
+          // 3. Render SVG
+          const { svg } = await mermaid.render(
+            'mermaid-dynamic-graph',
+            graphCode
+          );
+
+          if (isMounted) {
+            mermaidRef.current.innerHTML = svg;
+          }
+
         } catch (err: any) {
-          console.error("Mermaid rendering error:", err);
-          setRenderError("Failed to render the visual map. The thread might be too complex.");
+          console.error("Mermaid rendering/parsing error:", err);
+
+          if (isMounted) {
+            setRenderError(
+              "Organizing these thoughts is taking a moment... The thread's complexity caused a visual glitch. Please try re-generating."
+            );
+
+            if (mermaidRef.current) {
+              mermaidRef.current.innerHTML = '';
+            }
+          }
         }
       }
     };
+
     renderGraph();
+
+    return () => {
+      isMounted = false;
+    };
   }, [graphCode]);
 
   const handleVisualize = async () => {
     if (!input.trim()) return;
+
     setLoading(true);
     setGraphCode(null);
     setRenderError(null);
-    
+
     try {
       const code = await generateMermaidGraph(input);
       setGraphCode(code);
@@ -75,14 +104,17 @@ export const ThreadVisualizer: React.FC = () => {
           <Network className="w-5 h-5 text-indigo-500" />
         </div>
         <div>
-          <h3 className="text-sm font-semibold text-slate-800 tracking-wide">Spatial Translator</h3>
-          <p className="text-xs text-slate-500">Convert dense linear text into a scannable mind map.</p>
+          <h3 className="text-sm font-semibold text-slate-800 tracking-wide">
+            Spatial Translator
+          </h3>
+          <p className="text-xs text-slate-500">
+            Convert dense linear text into a scannable mind map.
+          </p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 min-h-[400px]">
-        
-        {/* Left Side: Input Area */}
+        {/* Left Side */}
         <div className="flex flex-col h-full">
           <textarea
             className="flex-1 w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-400 text-slate-700 resize-none text-sm leading-relaxed mb-4 min-h-[300px]"
@@ -90,31 +122,41 @@ export const ThreadVisualizer: React.FC = () => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
           />
+
           <button
             onClick={handleVisualize}
             disabled={loading || !input}
             className="w-full bg-slate-800 hover:bg-slate-900 text-white py-3.5 rounded-xl font-medium transition-colors disabled:opacity-50 flex justify-center items-center gap-2"
           >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Map Cognitive Relationships'}
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              'Map Cognitive Relationships'
+            )}
             {!loading && <ArrowRight className="w-4 h-4" />}
           </button>
         </div>
 
-        {/* Right Side: Visualization Canvas */}
+        {/* Right Side */}
         <div className="bg-slate-50/50 border border-slate-200 rounded-2xl p-4 flex flex-col items-center justify-center overflow-hidden relative min-h-[300px]">
-          
           {!graphCode && !loading && !renderError && (
             <div className="text-center text-slate-400">
               <Network className="w-12 h-12 mx-auto mb-3 opacity-20" />
-              <p className="text-sm font-medium">Awaiting spatial translation</p>
-              <p className="text-xs mt-1 max-w-xs mx-auto">Action items will be highlighted in teal for immediate recognition.</p>
+              <p className="text-sm font-medium">
+                Awaiting spatial translation
+              </p>
+              <p className="text-xs mt-1 max-w-xs mx-auto">
+                Action items will be highlighted in teal for immediate recognition.
+              </p>
             </div>
           )}
 
           {loading && (
             <div className="text-center text-indigo-400 animate-pulse">
               <Network className="w-8 h-8 mx-auto mb-3 animate-spin-slow" />
-              <p className="text-sm font-medium">Generating neural map...</p>
+              <p className="text-sm font-medium">
+                Generating neural map...
+              </p>
             </div>
           )}
 
@@ -125,12 +167,12 @@ export const ThreadVisualizer: React.FC = () => {
             </div>
           )}
 
-          {/* Mermaid Injection Container */}
-          <div 
-            className={`w-full overflow-auto flex justify-center ${loading || renderError ? 'hidden' : 'block'}`}
-            ref={mermaidRef} 
+          <div
+            className={`w-full overflow-auto flex justify-center ${
+              loading || renderError ? 'hidden' : 'block'
+            }`}
+            ref={mermaidRef}
           />
-          
         </div>
       </div>
     </div>

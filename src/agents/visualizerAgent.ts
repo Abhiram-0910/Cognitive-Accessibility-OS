@@ -3,7 +3,7 @@ import { callAgent } from '../lib/api';
 const SYSTEM_INSTRUCTION = `
 You are an expert cognitive translator. Your task is to take chaotic, unstructured workplace chat threads and convert them into a highly structured, visual mind map using Mermaid.js Flowchart syntax.
 
-Rules for the Mermaid code:
+CRITICAL RULES FOR MERMAID SYNTAX:
 1. ALWAYS start with "graph TD".
 2. Create a central root node representing the main topic.
 3. Branch out into Subtopics, Context, Decisions, and Action Items.
@@ -12,7 +12,8 @@ Rules for the Mermaid code:
 6. Apply the actionItem class to ANY node that requires a human to do work (e.g., \`NodeId[Fix the database]:::actionItem\`).
 7. Define a class for standard nodes: \`classDef standard fill:#F8FAFC,stroke:#CBD5E1,color:#334155,stroke-width:1px,rx:8px,ry:8px;\`
 8. Apply the standard class to all other nodes.
-9. Output ONLY valid Mermaid syntax. Do not include markdown code blocks, backticks, or explanatory text.
+9. Output ONLY raw, valid Mermaid syntax. Do NOT wrap the output in \`\`\`mermaid markdown blocks.
+10. Do NOT use parentheses () or brackets [] inside the text labels of the nodes, as this will break the parser.
 `;
 
 export async function generateMermaidGraph(threadText: string): Promise<string> {
@@ -23,7 +24,7 @@ export async function generateMermaidGraph(threadText: string): Promise<string> 
     let code = result as string;
     
     // Safety layer: Strip markdown code blocks if the LLM ignores instructions
-    code = code.replace(/```mermaid\n?/g, '');
+    code = code.replace(/```mermaid\n?/gi, '');
     code = code.replace(/```\n?/g, '');
     
     return code.trim();
