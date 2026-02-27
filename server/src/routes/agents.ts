@@ -404,83 +404,8 @@ Task: "${task}"
 
 // ─── HuggingFace Emotion Inference ────────────────────────────────────────────
 
-import { analyzeSession } from '../services/emotionInference';
-import { supabaseAdmin } from '../utils/supabaseAdmin';
-
-/**
- * Trigger async emotion analysis for a completed game session.
- * Used by the frontend immediately after a game ends and all frames are uploaded.
- */
-router.post('/analyze-session', async (req: Request, res: Response) => {
-  try {
-    const { sessionId } = req.body;
-    if (!sessionId) {
-      return res.status(400).json({ error: 'sessionId is required' });
-    }
-
-    // Trigger analysis asynchronously (don't block the response)
-    analyzeSession(sessionId)
-      .then(report => console.log(`[agents] Session ${sessionId} analysis complete. Dominant: ${report.dominant_emotion}`))
-      .catch(err => console.error(`[agents] Session ${sessionId} analysis failed:`, err));
-
-    res.status(202).json({ success: true, message: 'Analysis queued successfully' });
-  } catch (error: any) {
-    console.error('[analyze-session]', error);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-/**
- * Fetch the aggregated emotion report for a specific session.
- * Used by ParentDashboard to view the PDF report data.
- */
-router.get('/session-report/:id', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-
-    // First check if an analysis already exists in the expression_logs
-    const { data: logs, error } = await supabaseAdmin
-      .from('expression_logs')
-      .select('emotion, confidence')
-      .eq('session_id', id);
-
-    if (error) throw error;
-
-    if (!logs || logs.length === 0) {
-      // No logs yet — analysis might still be running or hasn't started
-      // For demo purposes, we can force a synchronous analysis here if we wanted to block,
-      // but it's better to just return a "pending" status
-      return res.status(200).json({ status: 'pending', message: 'Analysis not yet complete.' });
-    }
-
-    // Aggregate on the fly if needed, or query a materialized view
-    const counts: Record<string, number> = {};
-    let totalConf = 0;
-    for (const log of logs) {
-      counts[log.emotion] = (counts[log.emotion] || 0) + 1;
-      totalConf += log.confidence;
-    }
-
-    const dominant = Object.entries(counts).sort(([, a], [, b]) => b - a)[0]?.[0] || 'neutral';
-    const breakdown: Record<string, number> = {};
-    for (const [emo, count] of Object.entries(counts)) {
-      breakdown[emo] = Math.round((count / logs.length) * 100);
-    }
-
-    res.status(200).json({
-      success: true,
-      report: {
-        session_id: id,
-        analyzed_frames: logs.length,
-        dominant_emotion: dominant,
-        emotion_breakdown: breakdown,
-        confidence_avg: Number((totalConf / logs.length).toFixed(3))
-      }
-    });
-  } catch (error: any) {
-    console.error('[session-report]', error);
-    res.status(500).json({ error: 'Failed to fetch report' });
-  }
-});
+// NOTE: Remote emotion inference (HuggingFace) has been DELETED to comply with 
+// GDPR/COPPA zero-trust privacy requirements. All facial telemetry and emotional
+// analysis is now performed strictly on-device using local WebAssembly (MediaPipe).
 
 export const agentRoutes = router;

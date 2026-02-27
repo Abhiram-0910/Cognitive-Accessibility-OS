@@ -17,7 +17,9 @@ export const useCognitiveMonitor = () => {
     pauseFrequency: 0,
     contextSwitches: 0,
     facialTension: 0,
-    vocalEnergy: 0
+    gazeWander: 0,
+    vocalEnergy: 0,
+    speechRate: 0
   });
 
   const lastKeystrokeTime = useRef<number>(Date.now());
@@ -77,6 +79,49 @@ export const useCognitiveMonitor = () => {
 
     // Initialize Edge ML Model
     initCognitiveModel().catch(console.error);
+
+    let stream: MediaStream | null = null;
+    let videoEl: HTMLVideoElement | null = null;
+
+    const setupSensors = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        
+        // Setup hidden video element for FaceMesh
+        videoEl = document.createElement('video');
+        videoEl.srcObject = stream;
+        videoEl.autoplay = true;
+        videoEl.muted = true;
+        videoEl.playsInline = true;
+        
+        await new Promise((resolve) => {
+          videoEl!.onloadedmetadata = () => resolve(true);
+        });
+
+        visionEngine.current?.startAnalysis(
+          videoEl,
+          (m) => {
+            metrics.current.facialTension = m.tension;
+            metrics.current.gazeWander = m.gazeWander;
+            // Map joy/frustration/confusion into metrics if necessary eventually
+          },
+          undefined,
+          () => console.warn("Face lost"),
+          () => console.log("Face recovered")
+        );
+
+        voiceEngine.current?.startAnalysis(
+          (m) => {
+            metrics.current.vocalEnergy = m.vocalEnergy;
+            metrics.current.speechRate = m.speechRate;
+          }
+        );
+      } catch (err) {
+        console.error("[CognitiveMonitor] Sensor access failed:", err);
+      }
+    };
+
+    setupSensors();
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // ── Ctrl+Shift+D — Toggle telemetry / demo mode ───────────────────────

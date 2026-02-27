@@ -124,6 +124,13 @@ export class BiometricVisionEngine {
   private landmarker: FaceLandmarker | null = null;
   private isRunning = false;
   private videoElement: HTMLVideoElement | null = null;
+  private isHeuristicFallback = false;
+  
+  // Heuristic variables
+  private lastMousePos = { x: 0, y: 0 };
+  private lastMouseTime = 0;
+  private mouseVelocity = 0;
+  private mouseMoveListener: ((e: MouseEvent) => void) | null = null;
 
   // Calibration state for legacy tension metric
   private baselineBrowDistance = 0;
@@ -135,19 +142,25 @@ export class BiometricVisionEngine {
   private readonly FACE_LOST_THRESHOLD_MS = 5000; // 5 seconds
 
   async initialize() {
-    const vision = await FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm',
-    );
+    try {
+      const vision = await FilesetResolver.forVisionTasks(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm',
+      );
 
-    this.landmarker = await FaceLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath:
-          'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-        delegate: 'GPU', // Offloads to WebGL — keeps main thread free
-      },
-      runningMode: 'VIDEO',
-      outputFaceBlendshapes: true, // CRITICAL — enables all 52 ARKit blendshapes
-    });
+      this.landmarker = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath:
+            'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+          delegate: 'GPU', // Offloads to WebGL — keeps main thread free
+        },
+        runningMode: 'VIDEO',
+        outputFaceBlendshapes: true, // CRITICAL — enables all 52 ARKit blendshapes
+      });
+      console.log("[BiometricEngine] MediaPipe loaded successfully.");
+    } catch (err) {
+      console.error("[BiometricEngine] MediaPipe failed to load. Engaging Heuristic Fallback.", err);
+      this.isHeuristicFallback = true;
+    }
   }
 
   /**
@@ -166,10 +179,74 @@ export class BiometricVisionEngine {
     onFaceLost?: () => void,
     onFaceRecovered?: () => void,
   ) {
-    if (!this.landmarker) await this.initialize();
+    if (!this.landmarker && !this.isHeuristicFallback) await this.initialize();
+    
     this.videoElement = videoElement;
     this.isRunning = true;
 
+    // ── Heuristic Fallback Mode ───────────────────────────────────────────────
+    if (this.isHeuristicFallback) {
+      console.warn("[BiometricEngine] Running in Heuristic Fallback mode (mouse tracking).");
+      
+      this.mouseMoveListener = (e: MouseEvent) => {
+        const now = performance.now();
+        if (this.lastMouseTime > 0) {
+          const dx = e.clientX - this.lastMousePos.x;
+          const dy = e.clientY - this.lastMousePos.y;
+          const dt = now - this.lastMouseTime;
+          
+          if (dt > 0) {
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            // v is roughly pixels per millisecond
+            const v = distance / dt;
+            
+            // smooth out velocity
+            this.mouseVelocity = (this.mouseVelocity * 0.8) + (v * 0.2);
+          }
+        }
+        
+        this.lastMousePos = { x: e.clientX, y: e.clientY };
+        this.lastMouseTime = now;
+      };
+      
+      window.addEventListener('mousemove', this.mouseMoveListener);
+      
+      // Heuristic synthesis loop masquerading as video frame ticks
+      const heuristicLoop = () => {
+        if (!this.isRunning) return;
+        
+        // Decay velocity if mouse stops
+        if (performance.now() - this.lastMouseTime > 100) {
+          this.mouseVelocity *= 0.9;
+        }
+
+        // Extremely rough mapping of mouse erraticism to cognitive components
+        // High, erratic mouse movement loosely maps to frustration/wander.
+        // Lack of movement is neutral.
+        const v = Math.min(this.mouseVelocity, 10); // cap
+        
+        const pseudoFrustration = (v > 2) ? clamp100((v - 2) * 12) : 0;
+        const pseudoGazeWander = clamp100(v * 15);
+        const pseudoTension = clamp100(v * 8);
+
+        onTick({
+          tension: pseudoTension,
+          gazeWander: pseudoGazeWander,
+          joy: 0,
+          frustration: pseudoFrustration,
+          confusion: 0,
+        });
+        
+        onFrame?.();
+        
+        setTimeout(heuristicLoop, 200); // 5Hz update rate
+      };
+      
+      heuristicLoop();
+      return;
+    }
+
+    // ── Standard MediaPipe Mode ───────────────────────────────────────────────
     let lastVideoTime = -1;
 
     const analyzeFrame = async () => {
@@ -255,6 +332,11 @@ export class BiometricVisionEngine {
   /** Clean up GPU + camera resources. */
   close() {
     this.isRunning = false;
+
+    if (this.mouseMoveListener) {
+      window.removeEventListener('mousemove', this.mouseMoveListener);
+      this.mouseMoveListener = null;
+    }
 
     if (this.videoElement && this.videoElement.srcObject) {
       const stream = this.videoElement.srcObject as MediaStream;

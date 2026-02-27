@@ -1,6 +1,8 @@
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { StringOutputParser } from '@langchain/core/output_parsers';
+import { tool } from '@langchain/core/tools';
+import { z } from 'zod';
 import { vectorStore } from './VectorStore';
 
 type CognitiveState = 'hyperfocus' | 'normal' | 'approaching_overload' | 'overload';
@@ -63,32 +65,68 @@ export class AgentOrchestrator {
   }
 
   private async executeCommunicationAgent(userId: string, payload: any) {
-    // Cache layer intentionally disabled pending Redis integration
-    /*
-    const cached = await vectorStore.getCachedResponse(payload.text, 'communication_translation');
-    if (cached) {
-      console.log(`[Orchestrator] Cache hit for ${userId} communication.`);
-      return { status: 'success', message: cached };
-    }
-    */
-
-    console.log(`[Orchestrator] Executing LangChain translation for ${userId}`);
+    console.log(`[Orchestrator] Executing LangChain tool-calling agent for ${userId}`);
     
-    // LangChain Pipeline
-    const prompt = PromptTemplate.fromTemplate(
-      `Translate the following blunt corporate message into polite, collaborative language. 
-      Message: {message}`
+    // 1. Define the pgvector semantic search tool using standard LangChain abstractions
+    const searchMemoryTool = tool(
+      async ({ query }) => {
+        console.log(`[Tool Call] Executing pgvector search for query: "${query}"`);
+        const results = await vectorStore.searchContentOnly(query, userId, 3);
+        return results.length > 0 ? results.join('\n\n') : 'No relevant memory found in the vector database.';
+      },
+      {
+        name: 'query_pgvector_memory',
+        description: 'Searches the user\'s Prosthetic Memory vector database to recall past context, promises, or facts. Use this to lookup context before translating messages.',
+        schema: z.object({
+          query: z.string().describe('The natural language semantic search query (e.g., "what did I promise in the standup?")')
+        }),
+      }
     );
-    
-    const chain = prompt.pipe(this.llm).pipe(new StringOutputParser());
-    
+
+    // 2. Bind the tool to the LLM
+    const llmWithTools = this.llm.bindTools([searchMemoryTool]);
+
+    // 3. Simple execution loop (for single-step tool calling)
+    // NOTE: For true agentic depth in production we'd use createToolCallingAgent + AgentExecutor,
+    // but a direct invoke + validation is safer here and achieves the immediate requirement.
     try {
-      const result = await chain.invoke({ message: payload.text });
-      // await vectorStore.cacheResponse(payload.text, 'communication_translation', result);
-      return { status: 'success', message: result };
+      // Prompt asks the LLM to use memory if needed before formatting
+      const systemPrompt = `
+        You are an elite corporate communication bot. Translate the following blunt message into polite language.
+        If the message requires historical context, use the 'query_pgvector_memory' tool to check the user's database.
+        
+        Message: ${payload.text}
+      `;
+
+      // First pass: AI might call a tool or return the final translation
+      const result = await llmWithTools.invoke(systemPrompt);
+
+      if (result.tool_calls && result.tool_calls.length > 0) {
+        // AI decided to query pgvector! 
+        const toolCall = result.tool_calls[0];
+        const query = toolCall.args.query as string;
+        
+        // Execute the pgvector query
+        const memoryContext = await searchMemoryTool.invoke({ query });
+        
+        // Final generationpass incorporating the retrieved pgvector context
+        const finalPrompt = `
+          Context retrieved from vector database:
+          ${memoryContext}
+          
+          Using this context if relevant, translate the following blunt corporate message into polite language:
+          ${payload.text}
+        `;
+        const finalAns = await this.llm.invoke(finalPrompt);
+        return { status: 'success', message: finalAns.content as string };
+      }
+
+      // If no tool was called, return the direct output
+      return { status: 'success', message: result.content as string };
+      
     } catch (error) {
-      console.error('[LangChain Error]:', error);
-      return { status: 'error', message: 'Translation failed due to high cognitive load on the server.' };
+      console.error('[LangChain Tool Calling Error]:', error);
+      return { status: 'error', message: 'Translation failed due to high cognitive load.' };
     }
   }
 

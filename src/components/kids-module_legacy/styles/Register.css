@@ -1,0 +1,131 @@
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@200;300;400;500;600;700;800&display=swap");
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Poppins", sans-serif;
+}
+
+.container {
+  display: flex
+;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  max-width: 1700px;
+  background-color: #f3f3f3;
+  margin: 0 auto;
+}
+
+.success-message {
+  color: green; /* Change to your desired color */
+  font-weight: bold;
+  margin-top: 10px;
+}
+
+
+.form-container {
+  width: 400px;
+  padding: 20px;
+  
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.input-field {
+  width: 100%;
+  margin: 10px 0;
+}
+
+.input-field input {
+  width: 100%;
+  padding: 12px;
+  border-radius: 5px;
+  border: 1px solid #ddd;
+  font-size: 16px;
+}
+
+.btn {
+  width: 100%;
+  padding: 12px;
+  background-color: linear-gradient(-45deg, #acdee1,#acdee1,#dfd3b4,#5c75b5, #5c75b5 100%);
+  color: white;
+  border: none;
+  border-radius: 5px;
+  font-size: 16px;
+  cursor: pointer;
+  margin-top: 20px;
+}
+
+.btn:hover {
+    background-color: #2874b9; /* Change to a darker shade or any color you prefer */
+    transform: scale(1.05); /* Slightly increase the button size on hover for a cool effect */
+  };
+
+
+.text-center {
+  text-align: center;
+  margin-top: 20px;
+}
+
+.text-center a {
+  color: linear-gradient(-45deg, #acdee1,#acdee1,#dfd3b4,#5c75b5, #5c75b5 100%);
+  text-decoration: none;
+}
+
+.text-center a:hover {
+  text-decoration: underline;
+}
+.success-message {
+  color: green; /* Set text color to green for success */
+  font-weight: bold;
+  margin-top: 10px;
+}
+
+
+/* MEDIA QUERIES FOR RESPONSIVENESS */
+
+@media (max-width: 600px) {
+  .form-container {
+    width: 90%;
+    padding: 15px;
+  }
+
+  .title {
+    font-size: 20px;
+  }
+
+  .input-field input {
+    padding: 10px;
+    font-size: 14px;
+  }
+
+  .btn {
+    padding: 10px;
+    font-size: 14px;
+  }
+  .success-message {
+    color: green; /* Set text color to green for success */
+    font-weight: bold;
+    margin-top: 10px;
+  }
+  
+  .error-message {
+    color: red; /* Set text color to red for errors */
+    font-weight: bold;
+    margin-top: 10px;
+  }
+  
+}
+

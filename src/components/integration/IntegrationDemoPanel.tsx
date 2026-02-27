@@ -22,6 +22,8 @@ import {
   IntegrationSource,
 } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
+import ReactFlow, { Background, Controls, Node, Edge, MarkerType } from 'reactflow';
+import 'reactflow/dist/style.css';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -112,16 +114,47 @@ const NotificationCard: React.FC<{ notification: IntegrationNotification }> = ({
                   Simplifying with Gemini…
                 </div>
               ) : (
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 mb-2">
+                <div className="space-y-1 h-[250px] flex flex-col">
+                  <div className="flex items-center gap-1.5 mb-2 shrink-0">
                     <Sparkles className="w-3 h-3 text-teal-500" />
                     <span className="text-[10px] font-bold text-teal-600 uppercase tracking-widest">
-                      AI Plain-Language Summary
+                      AI Plain-Language Flow
                     </span>
                   </div>
-                  <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
-                    {simplified}
-                  </p>
+                  <div className="flex-1 border border-slate-100 rounded-xl overflow-hidden bg-slate-50/50">
+                    <ReactFlow
+                      nodes={simplified.split('\n').filter(s => s.trim().length > 0).map((line, i) => ({
+                        id: `node-${i}`,
+                        position: { x: 50, y: 50 + i * 80 },
+                        data: { label: line.replace(/^[-\d.]+\s*/, '') }, // strip leading bullets/numbers
+                        type: 'default',
+                        style: {
+                          background: '#fff',
+                          border: '1px solid #14B8A6',
+                          borderRadius: '8px',
+                          fontSize: '11px',
+                          color: '#1E293B',
+                          padding: '10px',
+                          width: 250,
+                          boxShadow: '0 2px 8px rgba(20, 184, 166, 0.15)',
+                        }
+                      }))}
+                      edges={simplified.split('\n').filter(s => s.trim().length > 0).slice(1).map((_, i) => ({
+                        id: `edge-${i}`,
+                        source: `node-${i}`,
+                        target: `node-${i + 1}`,
+                        animated: true,
+                        style: { stroke: '#14B8A6', strokeWidth: 2 },
+                        markerEnd: { type: MarkerType.ArrowClosed, color: '#14B8A6' },
+                      }))}
+                      fitView
+                      fitViewOptions={{ padding: 0.2 }}
+                      proOptions={{ hideAttribution: true }}
+                    >
+                      <Background color="#ccc" gap={16} />
+                      <Controls showInteractive={false} />
+                    </ReactFlow>
+                  </div>
                 </div>
               )}
             </div>

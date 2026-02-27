@@ -19,180 +19,99 @@
  *  - correctGeminiEstimates(tasks, userId)  → batch-correct array of tasks
  */
 
-import { supabase } from '../supabase';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface HistoricalTask {
-  estimated_minutes: number;
-  actual_minutes: number;
-  completed_at?: string;
+export interface TimeBlindnessRecord {
+  taskId: string;
+  estimatedSeconds: number;
+  actualSeconds: number;
+  timestamp: number;
 }
 
-export interface GeminiTask {
-  title: string;
-  description?: string;
-  estimated_minutes: number;
-  [key: string]: unknown;
-}
-
-export interface CorrectedTask extends GeminiTask {
-  /** Original Gemini estimate (before correction). */
-  raw_estimated_minutes: number;
-  /** Corrected estimate (after applying the personal multiplier). */
-  corrected_minutes: number;
-  /** The multiplier that was applied. */
-  multiplier: number;
-}
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-/** Maximum number of historical tasks to analyse. */
-const MAX_HISTORY = 50;
-/** Minimum data points required for a personalised multiplier. */
-const MIN_DATA_POINTS = 5;
-/** Default multiplier when insufficient data exists.
- *  1.35x is the clinical average for ADHD time-blindness. */
-const DEFAULT_MULTIPLIER = 1.35;
-/** Outlier threshold: any task where actual > estimated * this is discarded. */
-const OUTLIER_THRESHOLD = 10;
-/** Minimum allowed multiplier (prevents pathological over-correction). */
-const MIN_MULTIPLIER = 0.8;
-/** Maximum allowed multiplier (prevents absurd inflation). */
-const MAX_MULTIPLIER = 2.5;
-/** Decay factor for recency weighting. Higher = more emphasis on recent tasks. */
-const RECENCY_DECAY = 0.85;
-
-// ─── Core Algorithm ───────────────────────────────────────────────────────────
+const STORAGE_KEY = 'neuroadaptive_time_blindness_history';
+const MAX_HISTORY_LENGTH = 50;
+const MIN_RECORDS_FOR_CALIB = 5;
+const DEFAULT_MULTIPLIER = 1.35; // Default padding while calibrating
+const MAX_MULTIPLIER = 3.0; // Cap to avoid absurd estimations
+const MIN_MULTIPLIER = 1.0; 
 
 /**
- * Calculate a personal time correction multiplier from historical task data.
- *
- * @param userId  Supabase auth user ID
- * @returns       A multiplier in the range [0.8, 2.5]
+ * Calculate the user's current time blindness padding multiplier.
+ * Uses a weighted average of recent tasks (more recent = higher weight).
  */
-export async function calculateTimeCorrectionFactor(userId: string): Promise<number> {
+export function calculatePaddingMultiplier(): number {
   try {
-    const { data, error } = await supabase
-      .from('tasks')
-      .select('estimated_minutes, actual_minutes, completed_at')
-      .eq('user_id', userId)
-      .not('actual_minutes', 'is', null)
-      .not('estimated_minutes', 'is', null)
-      .order('completed_at', { ascending: false })
-      .limit(MAX_HISTORY);
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return DEFAULT_MULTIPLIER;
 
-    if (error) {
-      console.error('[TimeCorrection] DB query failed:', error.message);
+    const history: TimeBlindnessRecord[] = JSON.parse(raw);
+    
+    // Not enough data yet? Return the safe default.
+    if (history.length < MIN_RECORDS_FOR_CALIB) {
       return DEFAULT_MULTIPLIER;
     }
 
-    if (!data || data.length < MIN_DATA_POINTS) {
-      return DEFAULT_MULTIPLIER;
-    }
+    let weightedSum = 0;
+    let weightTotal = 0;
 
-    return computeMultiplier(data as HistoricalTask[]);
+    // Iterate backwards (most recent first) applying a decay factor
+    history.slice().reverse().forEach((record, index) => {
+      // ratio > 1 means they took longer than expected
+      const ratio = record.actualSeconds / record.estimatedSeconds;
+      
+      // Decay weight: 1.0 for most recent, 0.9 for next, etc.
+      const weight = Math.pow(0.9, index); 
+      
+      weightedSum += ratio * weight;
+      weightTotal += weight;
+    });
+
+    if (weightTotal === 0) return DEFAULT_MULTIPLIER;
+
+    let multiplier = weightedSum / weightTotal;
+
+    // Apply bounds
+    multiplier = Math.max(MIN_MULTIPLIER, Math.min(MAX_MULTIPLIER, multiplier));
+
+    return Number(multiplier.toFixed(2));
   } catch (err) {
-    console.error('[TimeCorrection] Unexpected error:', err);
+    console.warn("Time correction calculation failed, using default.", err);
     return DEFAULT_MULTIPLIER;
   }
 }
 
 /**
- * Pure computation — no I/O. Testable in isolation.
- *
- * Uses exponential recency weighting so recent tasks dominate:
- *   weight[i] = RECENCY_DECAY ^ i  (i=0 is most recent)
- *
- * Multiplier = sum(weight * actual) / sum(weight * estimated)
+ * Record a completed task's time data to local storage.
  */
-export function computeMultiplier(tasks: HistoricalTask[]): number {
-  let weightedActual = 0;
-  let weightedEstimated = 0;
-  let validCount = 0;
+export function recordTaskCompletion(taskId: string, estimatedMinutes: number, actualSeconds: number) {
+  if (!estimatedMinutes || !actualSeconds) return;
 
-  for (let i = 0; i < tasks.length; i++) {
-    const { estimated_minutes, actual_minutes } = tasks[i];
+  try {
+    const estimatedSeconds = estimatedMinutes * 60;
+    
+    // Ignore highly anomalous records (e.g., leaving a task open overnight)
+    if (actualSeconds > estimatedSeconds * 10) return;
 
-    // Guard: skip incomplete or zero-value entries
-    if (!estimated_minutes || estimated_minutes <= 0) continue;
-    if (!actual_minutes || actual_minutes <= 0) continue;
+    const newRecord: TimeBlindnessRecord = {
+      taskId,
+      estimatedSeconds,
+      actualSeconds,
+      timestamp: Date.now()
+    };
 
-    // Guard: discard extreme outliers (left timer running overnight, etc.)
-    if (actual_minutes > estimated_minutes * OUTLIER_THRESHOLD) continue;
+    const raw = localStorage.getItem(STORAGE_KEY);
+    let history: TimeBlindnessRecord[] = raw ? JSON.parse(raw) : [];
 
-    // Exponential recency weight: most recent task (i=0) has weight 1.0
-    const weight = Math.pow(RECENCY_DECAY, i);
+    history.push(newRecord);
 
-    weightedActual += weight * actual_minutes;
-    weightedEstimated += weight * estimated_minutes;
-    validCount++;
+    // Keep only the most recent bounds
+    if (history.length > MAX_HISTORY_LENGTH) {
+      history = history.slice(-MAX_HISTORY_LENGTH);
+    }
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+
+    console.log(`[TimeBlindness] Recorded task. New Multiplier: ${calculatePaddingMultiplier()}x`);
+  } catch (err) {
+    console.error("Failed to record time data:", err);
   }
-
-  // Not enough clean data after filtering
-  if (validCount < MIN_DATA_POINTS || weightedEstimated === 0) {
-    return DEFAULT_MULTIPLIER;
-  }
-
-  const rawRatio = weightedActual / weightedEstimated;
-
-  // Clamp to safe range
-  const clamped = Math.max(MIN_MULTIPLIER, Math.min(MAX_MULTIPLIER, rawRatio));
-
-  // Round to 2 decimal places for clean display
-  return Number(clamped.toFixed(2));
 }
 
-// ─── Application Functions ────────────────────────────────────────────────────
-
-/**
- * Apply the personal time correction multiplier to a raw minute estimate.
- *
- * @param rawMinutes       Original Gemini-generated estimate
- * @param correctionFactor Personal multiplier from calculateTimeCorrectionFactor()
- * @returns                Corrected minutes (rounded up to nearest integer)
- */
-export function applyTimeBuffer(rawMinutes: number, correctionFactor: number): number {
-  if (rawMinutes <= 0) return 0;
-  if (correctionFactor <= 0) return rawMinutes;
-  return Math.ceil(rawMinutes * correctionFactor);
-}
-
-/**
- * Batch-correct an array of Gemini-generated tasks using the user's
- * personal time multiplier. Fetches the multiplier from historical data.
- *
- * @param tasks   Array of tasks from the Gemini micro-tasker
- * @param userId  Supabase auth user ID
- * @returns       Array of tasks with corrected_minutes and raw_estimated_minutes
- */
-export async function correctGeminiEstimates(
-  tasks: GeminiTask[],
-  userId: string,
-): Promise<CorrectedTask[]> {
-  const multiplier = await calculateTimeCorrectionFactor(userId);
-
-  return tasks.map(task => ({
-    ...task,
-    raw_estimated_minutes: task.estimated_minutes,
-    corrected_minutes: applyTimeBuffer(task.estimated_minutes, multiplier),
-    multiplier,
-  }));
-}
-
-/**
- * Synchronous version that accepts a pre-computed multiplier.
- * Useful when you've already fetched the factor and want to avoid
- * a redundant DB call.
- */
-export function correctGeminiEstimatesSync(
-  tasks: GeminiTask[],
-  multiplier: number,
-): CorrectedTask[] {
-  return tasks.map(task => ({
-    ...task,
-    raw_estimated_minutes: task.estimated_minutes,
-    corrected_minutes: applyTimeBuffer(task.estimated_minutes, multiplier),
-    multiplier,
-  }));
-}

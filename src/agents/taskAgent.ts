@@ -28,7 +28,7 @@ Output strictly as a JSON array of objects matching this schema:
 ]
 `;
 
-export async function generateMicroTasks(taskDescription: string): Promise<MicroTask[]> {
+export async function generateMicroTasks(taskDescription: string, estimatedTimeMinutes: number = 30): Promise<MicroTask[]> {
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:3000';
   
   try {
@@ -37,7 +37,7 @@ export async function generateMicroTasks(taskDescription: string): Promise<Micro
     const res = await fetch(`${BACKEND_URL}/api/agents/chunk-task`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task: taskDescription }),
+      body: JSON.stringify({ task: taskDescription, estimatedMinutes: estimatedTimeMinutes }),
       signal: AbortSignal.timeout(12_000),
     });
 

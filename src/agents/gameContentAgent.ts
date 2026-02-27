@@ -31,6 +31,81 @@ export interface SpellingQuestion {
 // ─── Backend URL ──────────────────────────────────────────────────────────────
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:3000';
 
+// ─── Hardcoded Fallbacks (Failover 2) ─────────────────────────────────────────
+
+const CLIENT_FALLBACK_QUIZ: QuizQuestion[] = [
+  {
+    question: 'How do you feel when you lose a game?',
+    answers: [
+      { text: 'Frustrated', correct: true },
+      { text: 'Happy', correct: false },
+      { text: 'Sleepy', correct: false },
+      { text: 'Hungry', correct: false },
+    ],
+  },
+  {
+    question: 'What should you do if you feel overwhelmed?',
+    answers: [
+      { text: 'Take deep breaths', correct: true },
+      { text: 'Yell', correct: false },
+      { text: 'Run away', correct: false },
+      { text: 'Throw things', correct: false },
+    ],
+  },
+  {
+    question: 'Which of these is a calm activity?',
+    answers: [
+      { text: 'Drawing', correct: true },
+      { text: 'Screaming', correct: false },
+      { text: 'Jumping on bed', correct: false },
+      { text: 'Kicking a ball', correct: false },
+    ],
+  },
+  {
+    question: 'How do you feel when someone shares with you?',
+    answers: [
+      { text: 'Happy', correct: true },
+      { text: 'Sad', correct: false },
+      { text: 'Angry', correct: false },
+      { text: 'Scared', correct: false },
+    ],
+  },
+  {
+    question: 'What is a good way to ask for help?',
+    answers: [
+      { text: 'Say "Can you help me please?"', correct: true },
+      { text: 'Cry loudly', correct: false },
+      { text: 'Say nothing', correct: false },
+      { text: 'Demand it', correct: false },
+    ],
+  }
+];
+
+const CLIENT_FALLBACK_SPELLING: SpellingQuestion[] = [
+  { word: 'C_lm', correctLetter: 'a', image: null, options: ['a', 'e', 'i', 'o'] },
+  { word: 'H_ppy', correctLetter: 'a', image: null, options: ['a', 'o', 'u', 'y'] },
+  { word: 'K_nd', correctLetter: 'i', image: null, options: ['i', 'e', 'a', 'o'] },
+  { word: 'S_fe', correctLetter: 'a', image: null, options: ['a', 'i', 'u', 'e'] },
+  { word: 'B_ave', correctLetter: 'r', image: null, options: ['r', 'l', 't', 'p'] },
+];
+
+/**
+ * Silently logs AI or DB failures to the telemetry pipeline so admins know the system is running degraded.
+ */
+async function logDegradedState(context: string, errorDetails: any) {
+  try {
+    await supabase.from('telemetry_events').insert({
+      event_type: 'ai_degraded',
+      source: 'gameContentAgent',
+      metadata: { context, error: errorDetails?.message || String(errorDetails) },
+      // Minimal dummy cognitive_load to satisfy the schema if required
+      cognitive_load: 0 
+    });
+  } catch {
+    // Ignore telemetry logging failures to avoid crash loops
+  }
+}
+
 // ─── Quiz Questions (Game.tsx — crack-the-quiz) ────────────────────────────────
 /**
  * Tries to fetch Gemini-generated quiz questions calibrated to `age`.
@@ -48,7 +123,7 @@ export async function fetchQuizQuestions(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ gameType: 'quiz', theme, count: 5, age }),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(4_000), // Strict 4s timeout prevents kids waiting on LLM
     });
 
     if (res.ok) {
@@ -56,30 +131,35 @@ export async function fetchQuizQuestions(
       if (json.success && Array.isArray(json.questions) && json.questions.length > 0) {
         console.info(
           `[gameContentAgent] ✅ Gemini generated ${json.questions.length} quiz questions` +
-          ` (theme: ${theme}, age: ${age})`
+          ` (theme: ${theme}, age: ${age})` + (json.fallback ? ' [BACKEND FALLBACK USED]' : '')
         );
         return json.questions as QuizQuestion[];
       }
     }
   } catch (err) {
-    console.warn('[gameContentAgent] Gemini quiz fetch failed, falling back to Supabase.', err);
+    console.warn('[gameContentAgent] Gemini quiz fetch failed (Likely Timeout), falling back to Supabase.', err);
   }
 
   return fetchQuizQuestionsFromSupabase();
 }
 
 export async function fetchQuizQuestionsFromSupabase(): Promise<QuizQuestion[]> {
-  const { data, error } = await supabase
-    .from('games')
-    .select('questions')
-    .eq('game_key', 'crack-the-quiz')
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('games')
+      .select('questions')
+      .eq('game_key', 'crack-the-quiz')
+      .single();
 
-  if (error || !data) {
-    console.error('[gameContentAgent] Supabase fallback also failed.', error);
-    return [];
+    if (error || !data || !Array.isArray(data.questions)) {
+      throw error || new Error('No questions found in Supabase');
+    }
+    return data.questions as QuizQuestion[];
+  } catch (err) {
+    console.error('[gameContentAgent] Supabase fallback also failed. Using hardcoded array.', err);
+    await logDegradedState('fetchQuizQuestionsFromSupabase', err);
+    return CLIENT_FALLBACK_QUIZ;
   }
-  return (data.questions as QuizQuestion[]) ?? [];
 }
 
 // ─── Spelling Questions (GameTwo.tsx — drag-and-spell) ────────────────────────
@@ -99,7 +179,7 @@ export async function fetchSpellingQuestions(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ gameType: 'spelling', theme, count: 5, age }),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(4_000), // Strict 4s timeout prevents kids waiting on LLM
     });
 
     if (res.ok) {
@@ -107,28 +187,33 @@ export async function fetchSpellingQuestions(
       if (json.success && Array.isArray(json.questions) && json.questions.length > 0) {
         console.info(
           `[gameContentAgent] ✅ Gemini generated ${json.questions.length} spelling questions` +
-          ` (theme: ${theme}, age: ${age})`
+          ` (theme: ${theme}, age: ${age})` + (json.fallback ? ' [BACKEND FALLBACK USED]' : '')
         );
         return json.questions as SpellingQuestion[];
       }
     }
   } catch (err) {
-    console.warn('[gameContentAgent] Gemini spelling fetch failed, falling back to Supabase.', err);
+    console.warn('[gameContentAgent] Gemini spelling fetch failed (Likely Timeout), falling back to Supabase.', err);
   }
 
   return fetchSpellingQuestionsFromSupabase();
 }
 
 export async function fetchSpellingQuestionsFromSupabase(): Promise<SpellingQuestion[]> {
-  const { data, error } = await supabase
-    .from('games')
-    .select('questions')
-    .eq('game_key', 'drag-and-spell')
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('games')
+      .select('questions')
+      .eq('game_key', 'drag-and-spell')
+      .single();
 
-  if (error || !data) {
-    console.error('[gameContentAgent] Supabase fallback also failed.', error);
-    return [];
+    if (error || !data || !Array.isArray(data.questions)) {
+      throw error || new Error('No questions found in Supabase');
+    }
+    return data.questions as SpellingQuestion[];
+  } catch (err) {
+    console.error('[gameContentAgent] Supabase fallback also failed. Using hardcoded array.', err);
+    await logDegradedState('fetchSpellingQuestionsFromSupabase', err);
+    return CLIENT_FALLBACK_SPELLING;
   }
-  return (data.questions as SpellingQuestion[]) ?? [];
 }
