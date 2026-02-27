@@ -26,6 +26,13 @@ export type CognitiveClassification =
   | 'approaching_overload'
   | 'overload';
 
+export interface AudioSettings {
+  binauralVolume: number;
+  ambientVolume: number;
+  uiFeedbackVolume: number;
+  isMuted: boolean;
+}
+
 export interface CognitiveMetrics {
   keystrokesPerMinute: number;
   errorRate: number;
@@ -42,11 +49,19 @@ interface CognitiveState {
   metrics: CognitiveMetrics;
   cognitiveLoadScore: number;
   classification: CognitiveClassification;
+  isHeuristic: boolean;
+
+  // ── Global Audio ──────────────────────────────────────────────────────────
+  globalAudioContext: AudioContext | null;
+  audioSettings: AudioSettings;
+  isAudioDucked: boolean;
+  isHardwareMuted: boolean;
 
   // ── UI flags ──────────────────────────────────────────────────────────────
   userRole: UserRole | null;
   permissionsGranted: boolean;
   onboardingComplete: boolean;
+  isOfflineMode: boolean;
 
   /** True while the Crisis Mode full-screen takeover is mounted.
    *  Prevents other UI layers from rendering modals on top. */
@@ -61,12 +76,20 @@ interface CognitiveState {
     metrics: Partial<CognitiveMetrics>,
     score: number,
     classification: CognitiveClassification,
+    isHeuristic?: boolean
   ) => void;
   setPermissionsGranted: (granted: boolean) => void;
   setOnboardingComplete: (complete: boolean) => void;
   setCrisisActive: (active: boolean) => void;
   setCurrentTaskCategory: (category: string) => void;
   setUserRole: (role: UserRole | null) => void;
+  setOfflineMode: (offline: boolean) => void;
+  setGlobalAudioContext: (ctx: AudioContext | null) => void;
+  updateAudioSettings: (settings: Partial<AudioSettings>) => void;
+  setAudioDucked: (ducked: boolean) => void;
+  setHardwareMuted: (muted: boolean) => void;
+  activeHeavyCompute: boolean;
+  setActiveHeavyCompute: (active: boolean) => void;
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -84,17 +107,30 @@ export const useCognitiveStore = create<CognitiveState>((set) => ({
   },
   cognitiveLoadScore: 0,
   classification: 'normal',
+  isHeuristic: false,
   userRole: null,
   permissionsGranted: false,
   onboardingComplete: false,
   crisisActive: false,
+  isOfflineMode: !navigator.onLine,
+  globalAudioContext: null,
+  audioSettings: {
+    binauralVolume: 0.5,
+    ambientVolume: 0.3,
+    uiFeedbackVolume: 0.5,
+    isMuted: false,
+  },
+  isAudioDucked: false,
+  isHardwareMuted: false,
+  activeHeavyCompute: false,
   currentTaskCategory: 'deep-work',
 
-  updateMetrics: (newMetrics, score, classification) =>
+  updateMetrics: (newMetrics, score, classification, isHeuristic = false) =>
     set((state) => ({
       metrics: { ...state.metrics, ...newMetrics },
       cognitiveLoadScore: score,
       classification,
+      isHeuristic,
     })),
 
   setPermissionsGranted: (granted) => set({ permissionsGranted: granted }),
@@ -102,4 +138,15 @@ export const useCognitiveStore = create<CognitiveState>((set) => ({
   setCrisisActive: (active) => set({ crisisActive: active }),
   setCurrentTaskCategory: (category) => set({ currentTaskCategory: category }),
   setUserRole: (role) => set({ userRole: role }),
+  setOfflineMode: (offline) => set({ isOfflineMode: offline }),
+  setGlobalAudioContext: (ctx) => set({ globalAudioContext: ctx }),
+  updateAudioSettings: (newSettings) =>
+    set((state) => {
+      const updated = { ...state.audioSettings, ...newSettings };
+      localStorage.setItem('neuroadapt_audio_prefs', JSON.stringify(updated));
+      return { audioSettings: updated };
+    }),
+  setAudioDucked: (ducked) => set({ isAudioDucked: ducked }),
+  setHardwareMuted: (muted) => set({ isHardwareMuted: muted }),
+  setActiveHeavyCompute: (active) => set({ activeHeavyCompute: active }),
 }));

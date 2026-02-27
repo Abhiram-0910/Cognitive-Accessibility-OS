@@ -9,6 +9,7 @@ interface HistoryDataPoint {
 
 export const EnergyTimeline: React.FC = () => {
   const loadScore = useCognitiveStore((state) => state.cognitiveLoadScore);
+  const isHeuristic = useCognitiveStore((state) => state.isHeuristic);
   const [history, setHistory] = useState<HistoryDataPoint[]>([]);
 
   useEffect(() => {
@@ -24,8 +25,13 @@ export const EnergyTimeline: React.FC = () => {
 
   return (
     <div className="w-full h-64 p-6 bg-white rounded-2xl shadow-sm border border-slate-100">
-      <h3 className="mb-4 text-sm font-semibold tracking-wide text-slate-500 uppercase">
-        Cognitive Load Trajectory
+      <h3 className="mb-4 text-sm font-semibold tracking-wide text-slate-500 uppercase flex items-center justify-between">
+        <span>Cognitive Load Trajectory</span>
+        {isHeuristic && (
+          <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-2 py-0.5 rounded-full border border-amber-200 normal-case tracking-normal shadow-sm">
+            [Heuristic Proxy Data]
+          </span>
+        )}
       </h3>
       <div className="w-full mt-2">
         <ResponsiveContainer width="100%" height={300} minWidth={0}>

@@ -31,6 +31,8 @@ export interface EmotionMetrics {
   frustration: number;
   /** Asymmetric brow raise + squint + lip purse composite */
   confusion: number;
+  /** Present if data is derived from the proxy */
+  isHeuristic?: boolean;
 }
 
 // ─── Blendshape helpers ───────────────────────────────────────────────────────
@@ -110,6 +112,7 @@ function computeConfusion(s: BlendshapeCategory[]): number {
 }
 
 // ─── Engine ───────────────────────────────────────────────────────────────────
+import { HeuristicTracker } from './heuristics';
 
 export class BiometricVisionEngine {
   private landmarker: FaceLandmarker | null = null;
@@ -117,11 +120,7 @@ export class BiometricVisionEngine {
   private videoElement: HTMLVideoElement | null = null;
   private isHeuristicFallback = false;
   
-  // Heuristic variables
-  private lastMousePos = { x: 0, y: 0 };
-  private lastMouseTime = 0;
-  private mouseVelocity = 0;
-  private mouseMoveListener: ((e: MouseEvent) => void) | null = null;
+  private heuristicTracker: HeuristicTracker | null = null;
   private heuristicLoopTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Stored callbacks for fallback restart
@@ -138,6 +137,10 @@ export class BiometricVisionEngine {
   private faceLostStart: number | null = null;
   private isFaceLost = false;
   private readonly FACE_LOST_THRESHOLD_MS = 5000; // 5 seconds
+
+  public setGameState(state: string) {
+    this.heuristicTracker?.setGameState(state);
+  }
 
   async initialize() {
     try {
@@ -191,55 +194,13 @@ export class BiometricVisionEngine {
     if (this.isHeuristicFallback) {
       console.warn("[BiometricEngine] Running in Heuristic Fallback mode (mouse tracking).");
       
-      this.mouseMoveListener = (e: MouseEvent) => {
-        const now = performance.now();
-        if (this.lastMouseTime > 0) {
-          const dx = e.clientX - this.lastMousePos.x;
-          const dy = e.clientY - this.lastMousePos.y;
-          const dt = now - this.lastMouseTime;
-          
-          if (dt > 0) {
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            // v is roughly pixels per millisecond
-            const v = distance / dt;
-            
-            // smooth out velocity
-            this.mouseVelocity = (this.mouseVelocity * 0.8) + (v * 0.2);
-          }
-        }
-        
-        this.lastMousePos = { x: e.clientX, y: e.clientY };
-        this.lastMouseTime = now;
-      };
-      
-      window.addEventListener('mousemove', this.mouseMoveListener);
+      this.heuristicTracker = new HeuristicTracker();
       
       // Heuristic synthesis loop masquerading as video frame ticks
       const heuristicLoop = () => {
-        if (!this.isRunning) return;
+        if (!this.isRunning || !this.heuristicTracker) return;
         
-        // Decay velocity if mouse stops
-        if (performance.now() - this.lastMouseTime > 100) {
-          this.mouseVelocity *= 0.9;
-        }
-
-        // Extremely rough mapping of mouse erraticism to cognitive components
-        // High, erratic mouse movement loosely maps to frustration/wander.
-        // Lack of movement is neutral.
-        const v = Math.min(this.mouseVelocity, 10); // cap
-        
-        const pseudoFrustration = (v > 2) ? clamp100((v - 2) * 12) : 0;
-        const pseudoGazeWander = clamp100(v * 15);
-        const pseudoTension = clamp100(v * 8);
-
-        onTick({
-          tension: pseudoTension,
-          gazeWander: pseudoGazeWander,
-          joy: 0,
-          frustration: pseudoFrustration,
-          confusion: 0,
-        });
-        
+        onTick(this.heuristicTracker.getMetrics());
         onFrame?.();
         
         this.heuristicLoopTimer = setTimeout(heuristicLoop, 200); // 5Hz update rate
@@ -256,6 +217,29 @@ export class BiometricVisionEngine {
     let lowFpsStartTime: number | null = null;
     const FPS_MIN_THRESHOLD = 10;
     const LOW_FPS_DURATION_MAX = 5000;
+
+    const handleMutexClaim = () => {
+      console.log("[BiometricEngine] 🛡️ WASM Mutex claimed by external engine. Releasing GPU resources.");
+      this.close();
+      this.isHeuristicFallback = true;
+      if (this.videoElement && this.storedOnTick) {
+        this.startAnalysis(
+          this.videoElement,
+          this.storedOnTick,
+          this.storedOnFrame,
+          this.storedOnFaceLost,
+          this.storedOnFaceRecovered
+        );
+      }
+    };
+
+    window.addEventListener('WASM_CLAIM_RESOURCES', handleMutexClaim);
+    // Store for cleanup
+    const originalClose = this.close.bind(this);
+    this.close = () => {
+      window.removeEventListener('WASM_CLAIM_RESOURCES', handleMutexClaim);
+      originalClose();
+    };
 
     const triggerHardwareDegradation = () => {
       console.warn('[BiometricEngine] 📉 Hardware degradation triggered due to low FPS. Falling back to mouse heuristics.');
@@ -396,9 +380,9 @@ export class BiometricVisionEngine {
       this.heuristicLoopTimer = null;
     }
 
-    if (this.mouseMoveListener) {
-      window.removeEventListener('mousemove', this.mouseMoveListener);
-      this.mouseMoveListener = null;
+    if (this.heuristicTracker) {
+      this.heuristicTracker.destroy();
+      this.heuristicTracker = null;
     }
 
     if (this.videoElement && this.videoElement.srcObject) {

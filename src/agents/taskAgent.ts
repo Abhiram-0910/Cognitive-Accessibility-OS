@@ -1,4 +1,5 @@
 import { callAgent } from '../lib/api';
+import { chunkTaskLocally } from '../lib/algorithms/offlineNLP';
 
 export interface MicroTask {
   id: string;
@@ -29,6 +30,11 @@ Output strictly as a JSON array of objects matching this schema:
 `;
 
 export async function generateMicroTasks(taskDescription: string, estimatedTimeMinutes: number = 30): Promise<MicroTask[]> {
+  if (!navigator.onLine) {
+    console.warn('[taskAgent] Network offline. Routing to offlineNLP.');
+    return chunkTaskLocally(taskDescription, estimatedTimeMinutes);
+  }
+
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:3000';
   
   try {

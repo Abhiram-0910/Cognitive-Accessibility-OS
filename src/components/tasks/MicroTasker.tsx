@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { generateMicroTasks, MicroTask } from '../../agents/taskAgent';
 import { calculatePaddingMultiplier, recordTaskCompletion } from '../../lib/algorithms/timeCorrection';
+import { useCognitiveStore } from '../../stores/cognitiveStore';
 import { Loader2, Zap, Clock, Check, Target } from 'lucide-react';
 
 export const MicroTasker: React.FC = () => {
@@ -11,6 +12,7 @@ export const MicroTasker: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [tasks, setTasks] = useState<MicroTask[]>([]);
   const [completed, setCompleted] = useState<Set<string>>(new Set());
+  const isOfflineMode = useCognitiveStore(s => s.isOfflineMode);
   
   // Time Blindness Tracking
   const [taskElapsedSeconds, setTaskElapsedSeconds] = useState<Record<string, number>>({});
@@ -149,6 +151,11 @@ export const MicroTasker: React.FC = () => {
           <Zap className="w-5 h-5" />
         </div>
         Momentum Architect
+        {isOfflineMode && (
+          <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ml-auto flex items-center gap-1">
+            ⚡ Offline
+          </span>
+        )}
       </h3>
 
       <div className="flex gap-3 relative z-10">

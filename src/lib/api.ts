@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+import { simplifyNotificationLocally } from './algorithms/offlineNLP';
 
 // =============================================================================
 // CORE AGENT CALL
@@ -172,6 +173,11 @@ Raw notification:
 "${notification.rawContent}"
 
 Plain summary:`.trim();
+
+  if (!navigator.onLine) {
+    console.warn('[simplifyNotification] Network offline. Routing to offlineNLP.');
+    return simplifyNotificationLocally(notification.rawContent);
+  }
 
   try {
     const result = await callAgent<string>({

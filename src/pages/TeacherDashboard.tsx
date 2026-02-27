@@ -51,6 +51,7 @@ import {
   Gamepad2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useCognitiveStore } from '../stores/cognitiveStore';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 // Maps to the `v_session_summary` view columns
@@ -116,6 +117,7 @@ const storageUrl = (bucket: string, path: string) => {
 export default function TeacherDashboard() {
   const navigate = useNavigate();
   const [displayName, setDisplayName] = useState('Teacher');
+  const isHeuristic = useCognitiveStore(s => s.isHeuristic);
 
   // Derive display name from Supabase auth session
   useEffect(() => {
@@ -470,7 +472,14 @@ export default function TeacherDashboard() {
           {/* ──────────── OVERALL ANALYSIS VIEW ──────────── */}
           {view === 'overall' && (
             <motion.div key="overall" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}>
-              <h1 className="text-3xl font-black tracking-tight mb-8">Overall Expression Analysis</h1>
+              <div className="flex items-center gap-4 mb-8">
+                <h1 className="text-3xl font-black tracking-tight">Overall Expression Analysis</h1>
+                {isHeuristic && (
+                  <span className="px-3 py-1 bg-amber-500/20 border border-amber-400/50 text-amber-300 font-bold text-xs rounded-full">
+                    [Heuristic Proxy Data]
+                  </span>
+                )}
+              </div>
 
               {emotionAverages.length === 0 ? (
                 <div className="flex items-center justify-center h-64 text-white/30">
@@ -504,7 +513,7 @@ export default function TeacherDashboard() {
                           cx="50%" cy="50%"
                           innerRadius={30} outerRadius={120}
                           data={emotionAverages.map((e, i) => ({
-                            name: e.emotion,
+                            name: isHeuristic && e.emotion.toLowerCase() === 'frustration' ? 'Inferred Frustration (Contextual Heuristic)' : e.emotion,
                             value: e.avg,
                             fill: EMOTION_COLOURS[i % EMOTION_COLOURS.length],
                           }))}
@@ -522,10 +531,16 @@ export default function TeacherDashboard() {
 
                     {/* Bar chart */}
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                      <h3 className="font-bold mb-4 text-white/60 text-sm uppercase tracking-widest">Average by Emotion</h3>
+                      <h3 className="font-bold mb-4 text-white/60 text-sm uppercase tracking-widest">Contextual Heuristics (Average)</h3>
                       <div className="w-full mt-2">
                       <ResponsiveContainer width="100%" height={280} minWidth={0}>
-                        <BarChart data={emotionAverages} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
+                        <BarChart 
+                          data={emotionAverages.map(e => ({
+                            ...e,
+                            emotion: isHeuristic && e.emotion.toLowerCase() === 'frustration' ? 'Inferred Frustration (Contextual Heuristic)' : e.emotion
+                          }))} 
+                          margin={{ top: 5, right: 10, bottom: 5, left: 0 }}
+                        >
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.07)" />
                           <XAxis dataKey="emotion" tick={{ fill: 'rgba(255,255,255,.4)', fontSize: 11 }} />
                           <YAxis tickFormatter={v => `${v}%`} tick={{ fill: 'rgba(255,255,255,.4)', fontSize: 11 }} />
@@ -551,7 +566,14 @@ export default function TeacherDashboard() {
           {/* ──────────── DETAILED ANALYSIS VIEW ──────────── */}
           {view === 'detailed' && (
             <motion.div key="detailed" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}>
-              <h1 className="text-3xl font-black tracking-tight mb-8">Detailed Analysis</h1>
+              <div className="flex items-center gap-4 mb-8">
+                <h1 className="text-3xl font-black tracking-tight">Detailed Analysis</h1>
+                {isHeuristic && (
+                  <span className="px-3 py-1 bg-amber-500/20 border border-amber-400/50 text-amber-300 font-bold text-xs rounded-full">
+                    [Heuristic Proxy Data]
+                  </span>
+                )}
+              </div>
 
               {detailLoading && (
                 <div className="flex items-center justify-center h-64 text-white/30">

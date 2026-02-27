@@ -71,11 +71,13 @@ export const BodyDoubling: React.FC = () => {
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [sessionTimeLeft, setSessionTimeLeft] = useState(SESSION_DURATION_MS / 1000);
   const [jitsiFailed, setJitsiFailed] = useState(false);
+  const [pulseUserIds, setPulseUserIds] = useState<Set<string>>(new Set());
 
   // Refs for Jitsi
   const jitsiContainerRef = useRef<HTMLDivElement>(null);
   const jitsiApiRef = useRef<any>(null);
   const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const ambientAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // ── Supabase Realtime Presence ──────────────────────────────────────────
   useEffect(() => {
@@ -106,6 +108,19 @@ export const BodyDoubling: React.FC = () => {
         setOnlineUsers(users);
         setIsConnecting(false);
       })
+      .on('broadcast', { event: 'action_pulse' }, (payload) => {
+        const id = payload.payload?.user_id;
+        if (id) {
+          setPulseUserIds(prev => new Set(prev).add(id));
+          setTimeout(() => {
+            setPulseUserIds(prev => {
+              const next = new Set(prev);
+              next.delete(id);
+              return next;
+            });
+          }, 3000); // Visual ripple duration
+        }
+      })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           const { data: { session } } = await supabase.auth.getSession();
@@ -121,6 +136,9 @@ export const BodyDoubling: React.FC = () => {
               taskCategory: currentTaskCategory,
             });
           }
+        } else if (status !== 'SUBSCRIBED') {
+          console.warn(`[BodyDoubling] Realtime network connection drop detected: ${status}`);
+          setIsConnecting(true);
         }
       });
 
@@ -130,6 +148,44 @@ export const BodyDoubling: React.FC = () => {
       supabase.removeChannel(room);
     };
   }, [classification, currentTaskCategory]);
+
+  // ── Ambient Audio (Lobby) ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!activeRoomId) {
+      if (!ambientAudioRef.current) {
+        // Soft white noise / cafe ambience
+        const audio = new Audio('https://cdn.freesound.org/previews/234/234288_4019029-lq.mp3');
+        audio.loop = true;
+        audio.volume = 0.1;
+        ambientAudioRef.current = audio;
+      }
+      ambientAudioRef.current.play().catch(e => console.warn('[BodyDoubling] Auto-play blocked:', e));
+    } else {
+      ambientAudioRef.current?.pause();
+    }
+    return () => ambientAudioRef.current?.pause();
+  }, [activeRoomId]);
+
+  // ── Action Pulses (Throttled Broadcast) ────────────────────────────────────
+  const lastPulseTime = useRef(0);
+  const sendActionPulse = useCallback(() => {
+    const now = Date.now();
+    if (now - lastPulseTime.current < 3000) return; // 3 sec throttle
+    lastPulseTime.current = now;
+    
+    supabase.channel('body_doubling').send({
+      type: 'broadcast',
+      event: 'action_pulse',
+      payload: { user_id: currentUserId },
+    });
+  }, [currentUserId]);
+
+  useEffect(() => {
+    // Emit pulse on typing to signify "working"
+    const handleKey = () => sendActionPulse();
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [sendActionPulse]);
 
   // ── Deterministic room ID generator ─────────────────────────────────────
   const generateRoomId = useCallback(
@@ -383,8 +439,13 @@ export const BodyDoubling: React.FC = () => {
                       ${matchingTask ? 'border-indigo-200 bg-indigo-50/30' : 'border-slate-100'}`}
                   >
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 font-bold">
-                        {user.user_id.substring(0, 2).toUpperCase()}
+                      <div className="relative">
+                        {pulseUserIds.has(user.user_id) && (
+                          <span className="absolute inset-0 rounded-full bg-indigo-400 animate-ping opacity-75" />
+                        )}
+                        <div className="relative z-10 w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 font-bold border-2 border-transparent">
+                          {user.user_id.substring(0, 2).toUpperCase()}
+                        </div>
                       </div>
                       <div>
                         <h4 className="font-semibold text-slate-800 flex items-center gap-2">

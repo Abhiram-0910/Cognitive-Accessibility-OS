@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { FileDown, Loader2, Stethoscope, AlertCircle } from 'lucide-react';
+import { useCognitiveStore } from '../../stores/cognitiveStore';
 
 export const ClinicalExport: React.FC = () => {
   const [isExporting, setIsExporting] = useState(false);
+  const isHeuristic = useCognitiveStore(s => s.isHeuristic);
 
   const generatePDF = async () => {
     setIsExporting(true);
@@ -55,6 +57,16 @@ export const ClinicalExport: React.FC = () => {
         { align: 'center' }
       );
 
+      if (isHeuristic) {
+        pdf.setTextColor(245, 158, 11); // text-amber-500 equivalent
+        pdf.text(
+          "[Heuristic Proxy Data] - Active telemetry is inferred from peripheral input heuristics.",
+          pdfWidth / 2,
+          footerY + 8,
+          { align: 'center' }
+        );
+      }
+
       // Trigger the browser download
       pdf.save("Cognitive_Pattern_Summary.pdf");
 
@@ -73,6 +85,11 @@ export const ClinicalExport: React.FC = () => {
           <h3 className="text-xl font-light text-slate-800 flex items-center gap-2 tracking-tight">
             <Stethoscope className="w-5 h-5 text-indigo-500" />
             Clinical Data Export
+            {isHeuristic && (
+               <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-2 py-0.5 rounded-full border border-amber-200">
+                 [Heuristic Proxy Data]
+               </span>
+            )}
           </h3>
           <p className="text-slate-500 mt-1 text-sm">
             Generate a standardized snapshot for therapists or ADHD coaches.

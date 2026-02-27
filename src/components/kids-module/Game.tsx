@@ -300,6 +300,20 @@ export default function Game() {
 
   const selectAnswer = (index: number, correct: boolean) => {
     if (selectedIdx !== null) return;
+    
+    // ── Update Heuristic Context ──────────────────────────────────────────
+    if (visionEngineRef.current) {
+      if (correct) {
+        visionEngineRef.current.setGameState('correct_answer_streak');
+      } else {
+        visionEngineRef.current.setGameState('wrong_answer_streak');
+      }
+      // Reset to idle after a delay
+      setTimeout(() => {
+        visionEngineRef.current?.setGameState('idle');
+      }, 3000);
+    }
+
     const correctIdx = questions[currentIdx].answers.findIndex(a => a.correct);
     const states: AnswerState[] = questions[currentIdx].answers.map((_, i) =>
       i === correctIdx ? 'correct' : i === index ? (correct ? 'correct' : 'wrong') : 'wrong',

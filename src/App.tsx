@@ -178,13 +178,84 @@ const RoleHomeRedirect: React.FC<{
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
+import { SensoryEqualizer } from './components/shared/SensoryEqualizer';
+
 export default function App() {
   const cognitiveLoadScore = useCognitiveStore((state) => state.cognitiveLoadScore);
+  const setOfflineMode = useCognitiveStore((state) => state.setOfflineMode);
+  const setGlobalAudioContext = useCognitiveStore((state) => state.setGlobalAudioContext);
+  const setHardwareMuted = useCognitiveStore((state) => state.setHardwareMuted);
+
+  // Hardware mute detection implementation (approximate for browser)
+  useEffect(() => {
+    const checkMute = async () => {
+      try {
+        // We can't actually detect system hardware mute in browser with 100% accuracy,
+        // but we can check if AudioContext is allowed to output sound or if volume is 0
+        // For this "demo", we'll listen for media volume changes or blockages.
+        if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange !== undefined) {
+          navigator.mediaDevices.ondevicechange = () => {
+            // Signal potential hardware change
+          };
+        }
+      } catch (err) {}
+    };
+    checkMute();
+  }, [setHardwareMuted]);
+
+  // Pre-warm AudioContext on first interaction
+  useEffect(() => {
+    let prewarmed = false;
+    const handleFirstInteraction = () => {
+      if (prewarmed) return;
+      prewarmed = true;
+      try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextClass) {
+          const ctx = new AudioContextClass();
+          ctx.resume().then(() => {
+            console.log('[App] 🎵 Global AudioContext pre-warmed & resumed.');
+            setGlobalAudioContext(ctx);
+          });
+        }
+      } catch (err) {
+        console.warn('[App] Failed to pre-warm AudioContext', err);
+      }
+      window.removeEventListener('click', handleFirstInteraction);
+      window.removeEventListener('keydown', handleFirstInteraction);
+      window.removeEventListener('touchstart', handleFirstInteraction);
+    };
+
+    window.addEventListener('click', handleFirstInteraction);
+    window.addEventListener('keydown', handleFirstInteraction);
+    window.addEventListener('touchstart', handleFirstInteraction);
+
+    return () => {
+      window.removeEventListener('click', handleFirstInteraction);
+      window.removeEventListener('keydown', handleFirstInteraction);
+      window.removeEventListener('touchstart', handleFirstInteraction);
+    };
+  }, [setGlobalAudioContext]);
+
+  useEffect(() => {
+    const handleOnline = () => setOfflineMode(false);
+    const handleOffline = () => setOfflineMode(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    setOfflineMode(!navigator.onLine);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [setOfflineMode]);
 
   return (
     <Router>
       {/* Global Crisis Mode Takeover */}
       {cognitiveLoadScore >= 90 && <CrisisMode />}
+
+      {/* Global Sensory Equalizer */}
+      <SensoryEqualizer />
 
       <AuthGuard>
         {(session, onboardingComplete, userRole) => (

@@ -24,6 +24,7 @@ export const useCognitiveMonitor = () => {
 
   const lastKeystrokeTime = useRef<number>(Date.now());
   const keystrokeTimestamps = useRef<number[]>([]);
+  const isHeuristicRef = useRef<boolean>(false);
   
   // Use Refs to manage singleton instances of the hardware engines
   const visionEngine = useRef<BiometricVisionEngine | null>(null);
@@ -59,7 +60,7 @@ export const useCognitiveMonitor = () => {
       errorRate,
       pauseFrequency: currentMetrics.pauseFrequency,
       contextSwitches: currentMetrics.contextSwitches,
-    }, score, classification);
+    }, score, classification, isHeuristicRef.current);
 
     metrics.current.pauseFrequency = 0;
     metrics.current.contextSwitches = 0;
@@ -103,7 +104,7 @@ export const useCognitiveMonitor = () => {
           (m) => {
             metrics.current.facialTension = m.tension;
             metrics.current.gazeWander = m.gazeWander;
-            // Map joy/frustration/confusion into metrics if necessary eventually
+            isHeuristicRef.current = !!m.isHeuristic;
           },
           undefined,
           () => console.warn("Face lost"),

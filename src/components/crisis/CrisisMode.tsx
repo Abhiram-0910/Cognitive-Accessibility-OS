@@ -62,74 +62,84 @@ function useBreathPhase(): BreathPhase {
 
 function use432HzSine(isActive: boolean) {
   const [isSuspended, setIsSuspended] = useState(false);
-  const ctxRef = useRef<AudioContext | null>(null);
+  const globalCtx = useCognitiveStore(s => s.globalAudioContext);
   const oscRef = useRef<OscillatorNode | null>(null);
   const gainRef = useRef<GainNode | null>(null);
 
   const start = useCallback(() => {
     // Prevent double-start
-    if (ctxRef.current) return;
+    if (oscRef.current) return;
 
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      ctxRef.current = ctx;
+      let ctx = globalCtx;
+      
+      // Fallback: If user hit 90% load via demo mode before interacting with the page
+      if (!ctx || ctx.state === 'closed') {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        ctx = new AudioContextClass();
+      }
 
       // Check if browser blocked auto-play
-      if (ctx.state === 'suspended') {
+      if (ctx!.state === 'suspended') {
         setIsSuspended(true);
+      } else {
+        setIsSuspended(false);
       }
 
       // Oscillator → 432 Hz sine wave
-      const osc = ctx.createOscillator();
+      const osc = ctx!.createOscillator();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(SINE_FREQUENCY, ctx.currentTime);
+      osc.frequency.setValueAtTime(SINE_FREQUENCY, ctx!.currentTime);
       oscRef.current = osc;
 
       // Gain → gentle fade-in from 0 to MAX_VOLUME
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0, ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(MAX_VOLUME, ctx.currentTime + FADE_IN_DURATION);
+      const gain = ctx!.createGain();
+      gain.gain.setValueAtTime(0, ctx!.currentTime);
+      gain.gain.linearRampToValueAtTime(MAX_VOLUME, ctx!.currentTime + FADE_IN_DURATION);
       gainRef.current = gain;
 
       // Connect: Oscillator → Gain → Destination (speakers)
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(ctx!.destination);
 
       osc.start();
       console.log('[CrisisMode] 🎵 432 Hz sine wave started.');
     } catch (err) {
       console.warn('[CrisisMode] AudioContext unavailable:', err);
     }
-  }, []);
+  }, [globalCtx]);
 
   const stop = useCallback(() => {
-    if (gainRef.current && ctxRef.current) {
+    if (gainRef.current && oscRef.current) {
+      const ctx = globalCtx || gainRef.current.context;
+      
       // Gentle fade-out before stopping
       gainRef.current.gain.linearRampToValueAtTime(
         0,
-        ctxRef.current.currentTime + 1,
+        ctx.currentTime + 1,
       );
-    }
 
-    setTimeout(() => {
-      oscRef.current?.stop();
-      oscRef.current?.disconnect();
-      gainRef.current?.disconnect();
-      ctxRef.current?.close();
-      ctxRef.current = null;
-      oscRef.current = null;
-      gainRef.current = null;
-      console.log('[CrisisMode] 🎵 432 Hz sine wave stopped.');
-    }, 1100);
-  }, []);
+      setTimeout(() => {
+        oscRef.current?.stop();
+        oscRef.current?.disconnect();
+        gainRef.current?.disconnect();
+        // We do NOT close the global context here!
+        oscRef.current = null;
+        gainRef.current = null;
+        console.log('[CrisisMode] 🎵 432 Hz sine wave stopped.');
+      }, 1100);
+    }
+  }, [globalCtx]);
 
   const resume = useCallback(async () => {
-    if (ctxRef.current && ctxRef.current.state === 'suspended') {
-      await ctxRef.current.resume();
+    // If we've instantiated a local context because global was missing, try to resume
+    const ctxToResume = globalCtx || (gainRef.current ? gainRef.current.context : null);
+    if (ctxToResume && ctxToResume.state === 'suspended') {
+      await (ctxToResume as AudioContext).resume();
       setIsSuspended(false);
       console.log('[CrisisMode] 🎵 AudioContext resumed after user gesture.');
     }
-  }, []);
+  }, [globalCtx]);
 
   useEffect(() => {
     if (isActive) start();
@@ -157,10 +167,14 @@ export const CrisisMode: React.FC = () => {
   // 432 Hz audio
   const { isSuspended, resume } = use432HzSine(isTriggered);
 
-  // Sync crisisActive flag to Zustand
+  // Sync crisisActive flag and audio ducking to Zustand
   useEffect(() => {
     setCrisisActive(isTriggered);
-    return () => setCrisisActive(false);
+    useCognitiveStore.getState().setAudioDucked(isTriggered);
+    return () => {
+      setCrisisActive(false);
+      useCognitiveStore.getState().setAudioDucked(false);
+    };
   }, [isTriggered, setCrisisActive]);
 
   // Re-arm after load drops to safe levels
