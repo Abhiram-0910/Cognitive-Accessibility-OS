@@ -16,6 +16,7 @@
  */
 
 import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
+import { supabase } from '../supabase';
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -64,27 +65,17 @@ function computeJoy(s: BlendshapeCategory[]): number {
 }
 
 /**
- * Frustration — weighted blend of tension-related blendshapes.
- *
- * Primary:   browDownLeft + browDownRight       (weight 0.25 each)
- * Secondary: jawOpen                             (weight 0.15)
- *            mouthFrownLeft + mouthFrownRight    (weight 0.10 each)
- *            noseSneerLeft + noseSneerRight       (weight 0.075 each)
+ * Frustration — explicit clinical translation 
+ * (browInnerUp * 0.5) + (browDownLeft * 0.5) + (mouthPressLeft * 0.2)
  */
 function computeFrustration(s: BlendshapeCategory[]): number {
-  const browDL   = bs(s, 'browDownLeft');
-  const browDR   = bs(s, 'browDownRight');
-  const jaw      = bs(s, 'jawOpen');
-  const frownL   = bs(s, 'mouthFrownLeft');
-  const frownR   = bs(s, 'mouthFrownRight');
-  const sneerL   = bs(s, 'noseSneerLeft');
-  const sneerR   = bs(s, 'noseSneerRight');
+  const browInnerUp   = bs(s, 'browInnerUp');
+  const browDownLeft  = bs(s, 'browDownLeft');
+  const mouthPress    = bs(s, 'mouthPressLeft');
 
   const raw =
-    (browDL * 0.25) + (browDR * 0.25) +
-    (jaw * 0.15) +
-    (frownL * 0.10) + (frownR * 0.10) +
-    (sneerL * 0.075) + (sneerR * 0.075);
+    (browInnerUp * 0.5) + (browDownLeft * 0.5) +
+    (mouthPress * 0.2);
 
   return clamp100(raw * 100);
 }
@@ -131,6 +122,13 @@ export class BiometricVisionEngine {
   private lastMouseTime = 0;
   private mouseVelocity = 0;
   private mouseMoveListener: ((e: MouseEvent) => void) | null = null;
+  private heuristicLoopTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Stored callbacks for fallback restart
+  private storedOnTick?: (metrics: EmotionMetrics) => void;
+  private storedOnFrame?: () => void;
+  private storedOnFaceLost?: () => void;
+  private storedOnFaceRecovered?: () => void;
 
   // Calibration state for legacy tension metric
   private baselineBrowDistance = 0;
@@ -179,6 +177,11 @@ export class BiometricVisionEngine {
     onFaceLost?: () => void,
     onFaceRecovered?: () => void,
   ) {
+    this.storedOnTick = onTick;
+    this.storedOnFrame = onFrame;
+    this.storedOnFaceLost = onFaceLost;
+    this.storedOnFaceRecovered = onFaceRecovered;
+
     if (!this.landmarker && !this.isHeuristicFallback) await this.initialize();
     
     this.videoElement = videoElement;
@@ -239,7 +242,7 @@ export class BiometricVisionEngine {
         
         onFrame?.();
         
-        setTimeout(heuristicLoop, 200); // 5Hz update rate
+        this.heuristicLoopTimer = setTimeout(heuristicLoop, 200); // 5Hz update rate
       };
       
       heuristicLoop();
@@ -248,9 +251,64 @@ export class BiometricVisionEngine {
 
     // ── Standard MediaPipe Mode ───────────────────────────────────────────────
     let lastVideoTime = -1;
+    let framesThisSecond = 0;
+    let fpsCounterStart = performance.now();
+    let lowFpsStartTime: number | null = null;
+    const FPS_MIN_THRESHOLD = 10;
+    const LOW_FPS_DURATION_MAX = 5000;
+
+    const triggerHardwareDegradation = () => {
+      console.warn('[BiometricEngine] 📉 Hardware degradation triggered due to low FPS. Falling back to mouse heuristics.');
+      
+      // Stop WebGL processing
+      this.isRunning = false;
+      if (this.landmarker) {
+        this.landmarker.close();
+        this.landmarker = null;
+      }
+      
+      this.isHeuristicFallback = true;
+      
+      // Dispatch silent telemetry event
+      supabase.from('telemetry_events').insert({
+        event_type: 'hardware_degradation',
+        metadata: { reason: 'FPS < 10 for 5 consecutive seconds' },
+      }).catch(err => console.error("Telemetry push failed:", err));
+
+      // Re-trigger startAnalysis to begin heuristic loop invisibly
+      if (this.videoElement && this.storedOnTick) {
+        this.startAnalysis(
+          this.videoElement,
+          this.storedOnTick,
+          this.storedOnFrame,
+          this.storedOnFaceLost,
+          this.storedOnFaceRecovered
+        );
+      }
+    };
 
     const analyzeFrame = async () => {
       if (!this.isRunning || !this.videoElement) return;
+
+      const now = performance.now();
+      
+      // FPS Calculation
+      framesThisSecond++;
+      if (now - fpsCounterStart >= 1000) {
+        const fps = framesThisSecond;
+        framesThisSecond = 0;
+        fpsCounterStart = now;
+
+        if (fps < FPS_MIN_THRESHOLD) {
+          if (!lowFpsStartTime) lowFpsStartTime = now;
+          else if (now - lowFpsStartTime >= LOW_FPS_DURATION_MAX) {
+            triggerHardwareDegradation();
+            return; // Terminate requestAnimationFrame completely
+          }
+        } else {
+          lowFpsStartTime = null; // Reset if FPS recovers
+        }
+      }
 
       if (this.videoElement.currentTime !== lastVideoTime) {
         lastVideoTime = this.videoElement.currentTime;
@@ -332,6 +390,11 @@ export class BiometricVisionEngine {
   /** Clean up GPU + camera resources. */
   close() {
     this.isRunning = false;
+
+    if (this.heuristicLoopTimer) {
+      clearTimeout(this.heuristicLoopTimer);
+      this.heuristicLoopTimer = null;
+    }
 
     if (this.mouseMoveListener) {
       window.removeEventListener('mousemove', this.mouseMoveListener);

@@ -70,6 +70,7 @@ export const BodyDoubling: React.FC = () => {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [sessionTimeLeft, setSessionTimeLeft] = useState(SESSION_DURATION_MS / 1000);
+  const [jitsiFailed, setJitsiFailed] = useState(false);
 
   // Refs for Jitsi
   const jitsiContainerRef = useRef<HTMLDivElement>(null);
@@ -147,8 +148,10 @@ export const BodyDoubling: React.FC = () => {
 
       try {
         await loadJitsiScript();
+        setJitsiFailed(false);
       } catch (err) {
         console.error('[BodyDoubling] Jitsi script load failed:', err);
+        setJitsiFailed(true);
         return;
       }
 
@@ -180,7 +183,7 @@ export const BodyDoubling: React.FC = () => {
             // Minimal toolbar for distraction-free experience
             toolbarButtons: [
               'camera', 'microphone', 'hangup', 'fullscreen',
-              'tileview', 'chat',
+              'tileview',
             ],
           },
           interfaceConfigOverwrite: {
@@ -227,6 +230,7 @@ export const BodyDoubling: React.FC = () => {
     jitsiApiRef.current?.dispose();
     jitsiApiRef.current = null;
     setActiveRoomId(null);
+    setJitsiFailed(false);
     if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
   }, []);
 
@@ -256,7 +260,7 @@ export const BodyDoubling: React.FC = () => {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-teal-500" />
               </span>
-              Deep Work Session Active
+              {jitsiFailed ? 'Asynchronous Body Doubling' : 'Deep Work Session Active'}
             </h1>
             <div className="flex items-center gap-4 mt-1">
               <p className="text-slate-400 text-sm font-mono">Room: {activeRoomId}</p>
@@ -267,18 +271,41 @@ export const BodyDoubling: React.FC = () => {
           </div>
           <button
             onClick={endSession}
-            className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+            className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2 shadow-lg"
           >
             <PhoneOff className="w-5 h-5" /> End Focus Block
           </button>
         </header>
 
-        {/* Jitsi container — the External API renders here */}
-        <div
-          ref={jitsiContainerRef}
-          className="flex-1 rounded-3xl overflow-hidden border border-slate-800 relative shadow-2xl"
-          style={{ minHeight: '500px' }}
-        />
+        {jitsiFailed ? (
+          <div className="flex-1 rounded-3xl border border-slate-700 bg-slate-800/50 flex flex-col items-center justify-center text-center p-8 shadow-2xl relative overflow-hidden">
+             {/* Subdued animated background elements */}
+             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/40 via-slate-900/10 to-transparent pointer-events-none" />
+             <div className="relative z-10 max-w-lg">
+               <Shield className="w-16 h-16 text-indigo-400 mx-auto mb-6 opacity-80" />
+               <h2 className="text-2xl font-semibold text-slate-200 mb-4">Enterprise Firewall Detected</h2>
+               <p className="text-slate-400 mb-8 leading-relaxed">
+                 Live video (WebRTC) is blocked on your current network. However, you are still anchored to the grid. 
+                 Work synchronously, knowing you aren't alone.
+               </p>
+               
+               <div className="bg-slate-900/80 border border-slate-700/50 rounded-2xl p-6 shadow-inner inline-flex flex-col items-center">
+                 <span className="text-5xl font-black text-indigo-400 mb-2 drop-shadow-[0_0_15px_rgba(129,140,248,0.5)]">
+                   {Math.max(1, onlineUsers.length)}
+                 </span>
+                 <span className="text-sm font-medium text-slate-400 uppercase tracking-widest">
+                   Active User{onlineUsers.length !== 1 ? 's' : ''} in Protocol
+                 </span>
+               </div>
+             </div>
+          </div>
+        ) : (
+          <div
+            ref={jitsiContainerRef}
+            className="flex-1 rounded-3xl overflow-hidden border border-slate-800 relative shadow-2xl"
+            style={{ minHeight: '500px' }}
+          />
+        )}
       </div>
     );
   }

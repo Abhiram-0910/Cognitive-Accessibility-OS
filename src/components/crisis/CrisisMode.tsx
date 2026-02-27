@@ -61,6 +61,7 @@ function useBreathPhase(): BreathPhase {
 // ─── 432 Hz Sine Wave Generator ──────────────────────────────────────────────
 
 function use432HzSine(isActive: boolean) {
+  const [isSuspended, setIsSuspended] = useState(false);
   const ctxRef = useRef<AudioContext | null>(null);
   const oscRef = useRef<OscillatorNode | null>(null);
   const gainRef = useRef<GainNode | null>(null);
@@ -72,6 +73,11 @@ function use432HzSine(isActive: boolean) {
     try {
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
       ctxRef.current = ctx;
+
+      // Check if browser blocked auto-play
+      if (ctx.state === 'suspended') {
+        setIsSuspended(true);
+      }
 
       // Oscillator → 432 Hz sine wave
       const osc = ctx.createOscillator();
@@ -117,12 +123,22 @@ function use432HzSine(isActive: boolean) {
     }, 1100);
   }, []);
 
+  const resume = useCallback(async () => {
+    if (ctxRef.current && ctxRef.current.state === 'suspended') {
+      await ctxRef.current.resume();
+      setIsSuspended(false);
+      console.log('[CrisisMode] 🎵 AudioContext resumed after user gesture.');
+    }
+  }, []);
+
   useEffect(() => {
     if (isActive) start();
     else stop();
 
     return () => stop();
   }, [isActive, start, stop]);
+
+  return { isSuspended, resume };
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -139,7 +155,7 @@ export const CrisisMode: React.FC = () => {
   const phase = useBreathPhase();
 
   // 432 Hz audio
-  use432HzSine(isTriggered);
+  const { isSuspended, resume } = use432HzSine(isTriggered);
 
   // Sync crisisActive flag to Zustand
   useEffect(() => {
@@ -290,16 +306,34 @@ export const CrisisMode: React.FC = () => {
             transition={{ delay: 2 }}
             className="absolute bottom-36 z-10 flex items-center gap-2 text-xs text-slate-500"
           >
-            <span className="inline-block w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
-            432 Hz Binaural Tone Active
+            <span className={`inline-block w-2 h-2 rounded-full ${isSuspended ? 'bg-rose-500' : 'bg-teal-400 animate-pulse'}`} />
+            {isSuspended ? 'Audio Blocked - Tap Below' : '432 Hz Binaural Tone Active'}
           </motion.div>
+
+          {isSuspended && (
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="absolute z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 mt-32"
+            >
+              <button
+                onClick={resume}
+                className="px-6 py-4 bg-teal-500/20 hover:bg-teal-500/40 border border-teal-500/50 
+                           rounded-2xl text-teal-100 font-medium tracking-wide shadow-[0_0_30px_rgba(20,184,166,0.3)]
+                           transition-all active:scale-95 flex items-center gap-3 backdrop-blur-md"
+              >
+                <div className="w-3 h-3 rounded-full bg-teal-400 animate-pulse" />
+                Tap to Ground
+              </button>
+            </motion.div>
+          )}
 
           {/* Dismiss button — double-click only */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 3 }}
-            className="absolute bottom-16 flex flex-col items-center z-10"
+            className={`absolute bottom-16 flex flex-col items-center z-10 ${isSuspended ? 'opacity-20 pointer-events-none' : ''}`}
           >
             <button
               onDoubleClick={() => setIsDismissed(true)}

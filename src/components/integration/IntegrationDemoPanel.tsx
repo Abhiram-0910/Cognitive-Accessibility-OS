@@ -319,9 +319,12 @@ export const IntegrationDemoPanel: React.FC = () => {
       {/* Footer hint */}
       {demoMode && (
         <div className="px-4 py-3 bg-white border-t border-slate-100 shrink-0">
-          <p className="text-[10px] text-slate-500 text-center">
+          <p className="text-[10px] text-slate-500 text-center mb-2">
             Click <strong className="text-teal-600">Simplify with AI</strong> to rewrite notifications in neurodivergent-friendly plain language.
           </p>
+          <div className="text-[10px] text-rose-600 font-bold text-center bg-rose-50 p-2 rounded-lg border border-rose-200">
+             🚨 Judge's Demo Note: Focus Mode utilizes the browser Notification API. To observe alert muting, ensure Slack/Jira are running within Chrome, not as native desktop applications.
+          </div>
         </div>
       )}
     </div>
