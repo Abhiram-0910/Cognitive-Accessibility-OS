@@ -37,8 +37,10 @@ export const useDemoSimulator = (userId: string | null) => {
 
               mockSnapshots.push({
                 user_id: userId,
-                score: Math.round(randomizedLoad),
+                timestamp: timestamp.toISOString(),
+                load_score: Math.round(randomizedLoad),
                 classification,
+                context_type: hour <= 11 ? 'deep_work' : hour <= 14 ? 'meetings' : 'admin',
                 created_at: timestamp.toISOString(),
               });
             }

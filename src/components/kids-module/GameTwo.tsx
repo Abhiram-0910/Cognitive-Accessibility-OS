@@ -237,9 +237,9 @@ export default function GameTwo() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-violet-900 to-purple-900 text-white">
-      {/* Hidden AV elements */}
-      <video ref={videoRef} autoPlay playsInline className="hidden" />
-      <canvas ref={canvasRef} width={640} height={480} className="hidden" />
+      {/* Offscreen AV elements — must render in DOM for ref attachment */}
+      <video ref={videoRef} autoPlay playsInline className="fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none" />
+      <canvas ref={canvasRef} width={640} height={480} className="fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none" />
 
       <div className="max-w-xl mx-auto px-4 py-8 flex flex-col min-h-screen gap-6">
         <motion.h2

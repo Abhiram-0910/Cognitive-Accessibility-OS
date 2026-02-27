@@ -435,7 +435,7 @@ export default function TeacherDashboard() {
                     {/* Radial / Donut equivalent */}
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                       <h3 className="font-bold mb-4 text-white/60 text-sm uppercase tracking-widest">Emotion Distribution</h3>
-                      <div style={{ width: '100%', height: '280px', minHeight: '280px' }}>
+                      <div className="w-full h-[280px] min-h-[280px]" style={{ width: '100%', height: '280px', minHeight: '280px' }}>
                       <ResponsiveContainer width="100%" height="100%">
                         <RadialBarChart
                           cx="50%" cy="50%"
@@ -460,7 +460,7 @@ export default function TeacherDashboard() {
                     {/* Bar chart */}
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                       <h3 className="font-bold mb-4 text-white/60 text-sm uppercase tracking-widest">Average by Emotion</h3>
-                      <div style={{ width: '100%', height: '280px', minHeight: '280px' }}>
+                      <div className="w-full h-[280px] min-h-[280px]" style={{ width: '100%', height: '280px', minHeight: '280px' }}>
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={emotionAverages} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.07)" />

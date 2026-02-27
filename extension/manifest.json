@@ -11,7 +11,8 @@
   "host_permissions": [
     "https://*.slack.com/*",
     "https://mail.google.com/*",
-    "https://*.atlassian.net/*"
+    "https://*.atlassian.net/*",
+    "http://localhost:3000/*"
   ],
   "icons": {
     "16": "icons/icon-16.png",
@@ -29,6 +30,7 @@
         "https://*.atlassian.net/*"
       ],
       "js": ["content.js"],
+      "css": ["content.css"],
       "run_at": "document_idle"
     }
   ],

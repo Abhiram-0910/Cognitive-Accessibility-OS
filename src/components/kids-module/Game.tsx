@@ -1,27 +1,29 @@
 /**
  * Game (Quiz Game) — Kids Module
- * Ported from: _legacy_repo_to_port/Frontend/src/components/Game.js
  *
- * Functional parity checklist — ALL features preserved:
- * ✅ webcam permission request → start game → live timer (2 min)
- * ✅ Question shuffle on start
- * ✅ Per-answer correct/wrong state colouring
- * ✅ speechSynthesis "Correct!" / "Wrong!" feedback
+ * Features:
+ * ✅ Age gate — asks age if not passed from ParentDashboard
+ * ✅ Webcam permission → start game → 2 min timer
+ * ✅ Gemini AI–generated age-calibrated questions (fallback: Supabase seed)
+ * ✅ Per-answer correct/wrong state colouring + speech feedback
  * ✅ canvas-confetti celebration on game end
  * ✅ captureImage + captureScreenshot every 10s via interval
- * ✅ Webcam stream cleanup on unmount and game end
- * ✅ Score display + back-to-games navigation on end screen
- * ✅ Fetch questions from backend on mount (axios → fetch)
- *
- * Styling: full Tailwind + Framer Motion — zero CSS file imports.
+ * ✅ BiometricVisionEngine multi-class emotion tracking (joy / frustration / confusion)
+ * ✅ Automated Intervention: if frustration OR confusion > 80 for 5s:
+ *      • Timer pauses
+ *      • Questions blur
+ *      • Calming breathing overlay with pulsing animation
+ *      • Event logged to Supabase `intervention_events` table
+ * ✅ Webcam + GPU cleanup on unmount
  */
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
-import { Camera, Play, Trophy, ArrowLeft, Clock } from 'lucide-react';
+import { Camera, Play, Trophy, ArrowLeft, Clock, Heart } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fetchQuizQuestions } from '../../agents/gameContentAgent';
+import { BiometricVisionEngine, type EmotionMetrics } from '../../lib/biometrics/faceMesh';
 
 import TimerBar from './TimerBar';
 import useSessionId from '../../hooks/kids/useSessionId';
@@ -29,25 +31,18 @@ import useWebcam from '../../hooks/kids/useWebcam';
 import useCapture from '../../hooks/kids/useCapture';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface Answer {
-  text: string;
-  correct: boolean;
-}
-
-interface Question {
-  question: string;
-  image?: string;
-  answers: Answer[];
-}
-
+interface Answer { text: string; correct: boolean; }
+interface Question { question: string; image?: string; answers: Answer[]; }
 type AnswerState = 'correct' | 'wrong' | '';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const TOTAL_SECONDS = 2 * 60;
 const CAPTURE_INTERVAL_MS = 10_000;
-// game_key that identifies "Crack the Quiz" in the `games` Supabase table
-// (matches the `game_key TEXT UNIQUE` column in migrations/merge_kids_module.sql)
 const GAME_KEY = 'crack-the-quiz';
+/** Threshold above which an emotion triggers intervention checks. */
+const DISTRESS_THRESHOLD = 80;
+/** Duration (ms) the child must be distressed before intervention fires. */
+const DISTRESS_HOLD_MS = 5_000;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const speak = (text: string): void => {
@@ -62,11 +57,9 @@ const triggerConfetti = (): void => {
   const colours = ['#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff','#00ffff','#ffffff'];
   const id = setInterval(() => {
     confetti({
-      particleCount: 10,
-      spread: 360,
+      particleCount: 10, spread: 360,
       startVelocity: Math.random() * 15 + 15,
-      ticks: 300,
-      gravity: 0.6,
+      ticks: 300, gravity: 0.6,
       colors: [colours[Math.floor(Math.random() * colours.length)]],
       origin: { x: Math.random(), y: -0.1 },
     });
@@ -76,17 +69,85 @@ const triggerConfetti = (): void => {
   setTimeout(() => clearInterval(id), 10_000);
 };
 
+// ─── Calming Breathing Overlay ────────────────────────────────────────────────
+function BreathingOverlay({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center
+                 bg-gradient-to-br from-sky-900/95 via-indigo-900/95 to-purple-900/95
+                 backdrop-blur-xl"
+    >
+      {/* Breathing circle */}
+      <motion.div
+        animate={{
+          scale: [1, 1.5, 1.5, 1],
+          opacity: [0.6, 1, 1, 0.6],
+        }}
+        transition={{
+          duration: 8,
+          ease: 'easeInOut',
+          repeat: Infinity,
+        }}
+        className="w-40 h-40 rounded-full bg-gradient-to-br from-sky-400/60 to-teal-400/60
+                   shadow-[0_0_80px_rgba(56,189,248,0.4)] flex items-center justify-center"
+      >
+        <Heart className="w-12 h-12 text-white/80" />
+      </motion.div>
+
+      <motion.h2
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.3 }}
+        className="mt-10 text-3xl font-bold text-white tracking-tight text-center"
+      >
+        Let's take a breath together 🌊
+      </motion.h2>
+
+      <motion.p
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.6 }}
+        className="mt-3 text-white/60 text-center max-w-xs"
+      >
+        Breathe in as the circle grows… breathe out as it shrinks.
+      </motion.p>
+
+      <motion.div
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 1.5 }}
+        className="mt-8 flex flex-col items-center gap-3"
+      >
+        <p className="text-white/40 text-xs">Take your time. Press when you're ready.</p>
+        <motion.button
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={onDismiss}
+          className="px-8 py-3 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/20
+                     font-bold text-white text-sm transition"
+        >
+          I'm Ready to Continue ✨
+        </motion.button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function Game() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { username, gameName, childAge } = (location.state as { username?: string; gameName?: string; childAge?: number }) ?? {};
+  const { username, gameName, childAge } = (location.state as {
+    username?: string; gameName?: string; childAge?: number;
+  }) ?? {};
   const sessionName = username ?? 'Player';
 
-  // If childAge comes from ParentDashboard navigation state, use it directly.
-  // Otherwise, ask the child themselves (direct-route / development access).
+  // Age gate state
   const [localAge, setLocalAge] = useState<number | null>(childAge ?? null);
-  const [ageInput, setAgeInput] = useState('');          // controlled input for the age gate
+  const [ageInput, setAgeInput] = useState('');
   const ageForGemini = localAge ?? 7;
 
   // Kids module hooks
@@ -108,32 +169,99 @@ export default function Game() {
   const [isLoading, setIsLoading] = useState(true);
   const [flashClass, setFlashClass] = useState<'correct' | 'wrong' | null>(null);
 
-  // Fetch questions — Gemini first (age-calibrated), Supabase seed fallback.
-  // Runs whenever ageForGemini is resolved (either from nav state or age-gate input).
+  // ── Emotion + Intervention state ──────────────────────────────────────────
+  const [emotions, setEmotions] = useState<EmotionMetrics>({
+    tension: 0, gazeWander: 0, joy: 0, frustration: 0, confusion: 0,
+  });
+  const [interventionActive, setInterventionActive] = useState(false);
+  const [timerPaused, setTimerPaused] = useState(false);
+
+  // Track distress duration — ref to avoid stale closure inside rAF
+  const distressStartRef = useRef<number | null>(null);
+  const interventionLoggedRef = useRef(false);
+
+  // Singleton engine ref
+  const visionEngineRef = useRef<BiometricVisionEngine | null>(null);
+
+  // ── Fetch questions (Gemini first, Supabase fallback) ─────────────────────
   useEffect(() => {
-    if (!localAge) return; // wait until age is confirmed
+    if (!localAge) return;
     fetchQuizQuestions('emotions, animals, and everyday life', ageForGemini)
-      .then(qs => {
-        setQuestions(qs);
-        setIsLoading(false);
-      })
+      .then(qs => { setQuestions(qs); setIsLoading(false); })
       .catch(() => setIsLoading(false));
   }, [localAge, ageForGemini]);
 
-  // Countdown timer
+  // ── Countdown timer (pause-aware) ─────────────────────────────────────────
   useEffect(() => {
-    if (!hasStarted) return;
+    if (!hasStarted || timerPaused) return;
     if (timeRemaining <= 0) { endGame(); return; }
     const t = setInterval(() => setTimeRemaining(p => p - 1), 1000);
     return () => clearInterval(t);
-  }, [hasStarted, timeRemaining]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hasStarted, timeRemaining, timerPaused]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Start BiometricVisionEngine when game starts ──────────────────────────
+  useEffect(() => {
+    if (!hasStarted || !webcamGranted || !videoRef.current) return;
+
+    const engine = new BiometricVisionEngine();
+    visionEngineRef.current = engine;
+
+    engine.startAnalysis(videoRef.current, (metrics) => {
+      setEmotions(metrics);
+
+      // ── Distress threshold tracking ─────────────────────────────────
+      const isDistressed =
+        metrics.frustration >= DISTRESS_THRESHOLD ||
+        metrics.confusion >= DISTRESS_THRESHOLD;
+
+      if (isDistressed) {
+        if (!distressStartRef.current) {
+          distressStartRef.current = Date.now();
+        } else if (
+          Date.now() - distressStartRef.current >= DISTRESS_HOLD_MS &&
+          !interventionLoggedRef.current
+        ) {
+          // 5 seconds of sustained distress → trigger intervention
+          interventionLoggedRef.current = true;
+          setInterventionActive(true);
+          setTimerPaused(true);
+
+          // Log to Supabase (non-blocking, non-fatal)
+          supabase.from('intervention_events').insert({
+            session_id: sessionId ?? 'unknown',
+            child_name: sessionName,
+            frustration_score: Math.round(metrics.frustration),
+            confusion_score: Math.round(metrics.confusion),
+            trigger_reason:
+              metrics.frustration >= DISTRESS_THRESHOLD
+                ? 'sustained_frustration'
+                : 'sustained_confusion',
+            question_index: currentIdx,
+          }).then(({ error }) => {
+            if (error) console.warn('[Game] Intervention log skipped:', error.message);
+            else console.info('[Game] ✅ Intervention event logged to Supabase.');
+          });
+        }
+      } else {
+        // Child recovered — reset the timer
+        distressStartRef.current = null;
+      }
+    });
+
+    return () => {
+      engine.close();
+      visionEngineRef.current = null;
+    };
+  }, [hasStarted, webcamGranted]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cleanup webcam on unmount
   useEffect(() => () => stopWebcam(), [stopWebcam]);
 
+  // ── Game lifecycle ────────────────────────────────────────────────────────
   const endGame = useCallback(() => {
     setShowEndScreen(true);
     if (captureIntervalRef.current) clearInterval(captureIntervalRef.current);
+    visionEngineRef.current?.close();
     stopWebcam();
     triggerConfetti();
   }, [stopWebcam]);
@@ -149,6 +277,10 @@ export default function Game() {
     setAnswerStates([]);
     setHasStarted(true);
     setFlashClass(null);
+    setInterventionActive(false);
+    setTimerPaused(false);
+    distressStartRef.current = null;
+    interventionLoggedRef.current = false;
 
     if (webcamGranted && sessionId) {
       captureIntervalRef.current = setInterval(() => {
@@ -158,14 +290,20 @@ export default function Game() {
     }
   };
 
+  const dismissIntervention = () => {
+    setInterventionActive(false);
+    setTimerPaused(false);
+    distressStartRef.current = null;
+    // Allow re-triggering if emotions spike again
+    interventionLoggedRef.current = false;
+  };
+
   const selectAnswer = (index: number, correct: boolean) => {
     if (selectedIdx !== null) return;
-
     const correctIdx = questions[currentIdx].answers.findIndex(a => a.correct);
     const states: AnswerState[] = questions[currentIdx].answers.map((_, i) =>
       i === correctIdx ? 'correct' : i === index ? (correct ? 'correct' : 'wrong') : 'wrong',
     );
-
     setSelectedIdx(index);
     setAnswerStates(states);
     setFlashClass(correct ? 'correct' : 'wrong');
@@ -184,26 +322,37 @@ export default function Game() {
     }, 1000);
   };
 
-  // ─── Flash overlay colour ─────────────────────────────────────────────────
+  // ── Derived UI states ─────────────────────────────────────────────────────
   const bgFlash =
     flashClass === 'correct' ? 'bg-green-500/20' :
     flashClass === 'wrong'   ? 'bg-red-500/20'   : '';
 
-  // ─── Answer button colour ─────────────────────────────────────────────────
   const answerBg = (state: AnswerState) =>
     state === 'correct' ? 'bg-emerald-500 border-emerald-400 text-white scale-105' :
-    state === 'wrong'   ? 'bg-rose-500 border-rose-400 text-white'   :
+    state === 'wrong'   ? 'bg-rose-500 border-rose-400 text-white' :
     'bg-white/10 border-white/20 hover:bg-white/20 hover:border-white/40';
 
-  // ─── Age Gate ─────────────────────────────────────────────────────────────
-  // Shown when the child navigates directly (not via ParentDashboard launch).
+  // Colour for the emotion indicator pill
+  const emotionPillColour =
+    emotions.frustration >= 80 || emotions.confusion >= 80
+      ? 'bg-rose-500/80 text-white'
+      : emotions.joy >= 50
+      ? 'bg-emerald-500/80 text-white'
+      : 'bg-white/10 text-white/60';
+
+  const dominantEmotion =
+    emotions.frustration >= 80 ? '😤 Frustrated'
+    : emotions.confusion >= 80 ? '🤔 Confused'
+    : emotions.joy >= 50 ? '😊 Happy'
+    : '😐 Neutral';
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ── Age Gate ───────────────────────────────────────────────────────────────
   if (!localAge) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-violet-900 to-purple-900 text-white flex items-center justify-center p-6">
-        {/* Hidden canvas/video must always be mounted so the ref doesn't crash */}
-        <video ref={videoRef} autoPlay playsInline className="hidden" />
-        <canvas ref={canvasRef} width={640} height={480} className="hidden" />
-
+      <video ref={videoRef} autoPlay playsInline className="fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none" />
+      <canvas ref={canvasRef} width={640} height={480} className="fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none" />
         <motion.div
           initial={{ opacity: 0, scale: 0.85 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -212,7 +361,6 @@ export default function Game() {
           <div className="text-6xl animate-bounce">🧠</div>
           <h1 className="text-3xl font-black tracking-tight">How old are you?</h1>
           <p className="text-white/60 text-sm">We'll make the questions just right for you!</p>
-
           <form
             onSubmit={e => {
               e.preventDefault();
@@ -222,21 +370,15 @@ export default function Game() {
             className="w-full flex flex-col gap-4"
           >
             <input
-              type="number"
-              min={3}
-              max={18}
-              value={ageInput}
+              type="number" min={3} max={18} value={ageInput}
               onChange={e => setAgeInput(e.target.value)}
-              placeholder="My age is…"
-              autoFocus
+              placeholder="My age is…" autoFocus
               className="w-full text-center text-2xl font-bold px-6 py-4 rounded-2xl
                          bg-white/10 border-2 border-white/20 text-white placeholder:text-white/30
                          focus:outline-none focus:border-yellow-400 transition"
             />
             <motion.button
-              type="submit"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.97 }}
+              type="submit" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}
               className="w-full py-4 rounded-2xl bg-yellow-400 text-gray-900 font-black text-xl
                          shadow-lg shadow-yellow-400/30 disabled:opacity-40 transition"
               disabled={!ageInput || parseInt(ageInput, 10) < 3 || parseInt(ageInput, 10) > 18}
@@ -249,16 +391,24 @@ export default function Game() {
     );
   }
 
-  // ═════════════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════════
   return (
     <div
       className={`min-h-screen transition-colors duration-500 bg-gradient-to-br from-indigo-900 via-violet-900 to-purple-900 text-white ${bgFlash}`}
     >
-      {/* Hidden AV elements */}
-      <video ref={videoRef} autoPlay playsInline className="hidden" />
-      <canvas ref={canvasRef} width={640} height={480} className="hidden" />
+      {/* Offscreen AV elements — must render in DOM for ref attachment */}
+      <video ref={videoRef} autoPlay playsInline className="fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none" />
+      <canvas ref={canvasRef} width={640} height={480} className="fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none" />
 
-      <div className="max-w-2xl mx-auto px-4 py-8 flex flex-col min-h-screen">
+      {/* ── Breathing intervention overlay ── */}
+      <AnimatePresence>
+        {interventionActive && (
+          <BreathingOverlay onDismiss={dismissIntervention} />
+        )}
+      </AnimatePresence>
+
+      <div className={`max-w-2xl mx-auto px-4 py-8 flex flex-col min-h-screen
+                       transition-all duration-500 ${interventionActive ? 'blur-md pointer-events-none' : ''}`}>
 
         {/* ── Camera permission screen ── */}
         <AnimatePresence mode="popLayout">
@@ -281,8 +431,7 @@ export default function Game() {
                 <p className="text-rose-400 text-sm text-center">{webcamError.message}</p>
               )}
               <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.97 }}
+                whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}
                 onClick={requestWebcamAccess}
                 className="px-8 py-3 rounded-2xl bg-yellow-400 text-gray-900 font-bold text-lg shadow-lg shadow-yellow-400/30"
               >
@@ -306,8 +455,7 @@ export default function Game() {
                 {isLoading ? 'Loading questions…' : `${questions.length} questions · 2 minutes`}
               </p>
               <motion.button
-                whileHover={{ scale: 1.06 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.95 }}
                 onClick={startCapture}
                 disabled={isLoading || questions.length === 0}
                 className="flex items-center gap-2 px-10 py-4 rounded-2xl bg-gradient-to-r from-yellow-400 to-orange-400 text-gray-900 font-black text-xl shadow-xl shadow-orange-400/30 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -325,7 +473,7 @@ export default function Game() {
               animate={{ opacity: 1 }}
               className="flex flex-col gap-5 flex-1"
             >
-              {/* Timer row */}
+              {/* Timer + emotion pill */}
               <div className="flex items-center gap-3 bg-white/10 rounded-2xl px-4 py-3 backdrop-blur">
                 <Clock className="w-5 h-5 text-yellow-300 shrink-0" />
                 <span className="font-mono font-bold text-lg w-14">
@@ -334,10 +482,20 @@ export default function Game() {
                 <div className="flex-1">
                   <TimerBar totalSeconds={TOTAL_SECONDS} timeRemaining={timeRemaining} />
                 </div>
+                {/* Emotion indicator */}
+                <span className={`text-xs font-bold px-2 py-1 rounded-full shrink-0 transition-colors ${emotionPillColour}`}>
+                  {dominantEmotion}
+                </span>
                 <span className="text-white/50 text-sm shrink-0">
                   {currentIdx + 1}/{questions.length}
                 </span>
               </div>
+
+              {timerPaused && (
+                <div className="text-center text-amber-300 text-xs font-semibold animate-pulse">
+                  ⏸ Timer paused — intervention active
+                </div>
+              )}
 
               {/* Question card */}
               <AnimatePresence mode="popLayout">
@@ -404,8 +562,7 @@ export default function Game() {
                   : `Great effort, ${sessionName}! Keep practising.`}
               </p>
               <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                 onClick={() => navigate('/kids/games', { state: { username, gameName } })}
                 className="flex items-center gap-2 px-8 py-3 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/20 font-bold transition"
               >
