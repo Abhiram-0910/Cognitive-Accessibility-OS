@@ -63,11 +63,14 @@ export class AgentOrchestrator {
   }
 
   private async executeCommunicationAgent(userId: string, payload: any) {
+    // Cache layer intentionally disabled pending Redis integration
+    /*
     const cached = await vectorStore.getCachedResponse(payload.text, 'communication_translation');
     if (cached) {
       console.log(`[Orchestrator] Cache hit for ${userId} communication.`);
       return { status: 'success', message: cached };
     }
+    */
 
     console.log(`[Orchestrator] Executing LangChain translation for ${userId}`);
     
@@ -81,7 +84,7 @@ export class AgentOrchestrator {
     
     try {
       const result = await chain.invoke({ message: payload.text });
-      await vectorStore.cacheResponse(payload.text, 'communication_translation', result);
+      // await vectorStore.cacheResponse(payload.text, 'communication_translation', result);
       return { status: 'success', message: result };
     } catch (error) {
       console.error('[LangChain Error]:', error);

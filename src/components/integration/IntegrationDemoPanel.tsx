@@ -8,7 +8,7 @@
  * Used on the Dashboard to demonstrate the integration to judges without
  * requiring real Slack/Jira API keys.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles, Loader2, ChevronDown, ChevronUp, Radio,
@@ -21,6 +21,7 @@ import {
   IntegrationNotification,
   IntegrationSource,
 } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -157,18 +158,63 @@ type Tab = 'slack' | 'jira';
 export const IntegrationDemoPanel: React.FC = () => {
   const [tab, setTab]               = useState<Tab>('slack');
   const [demoMode, setDemoMode]     = useState(true);
+  
+  // State for live incoming webhooks (captured via the backend / webhooks route)
+  const [liveEvents, setLiveEvents] = useState<IntegrationNotification[]>([]);
 
-  const items = tab === 'slack' ? MOCK_SLACK_NOTIFICATIONS : MOCK_JIRA_TICKETS;
+  // Base mock items to show by default
+  const baseItems = tab === 'slack' ? MOCK_SLACK_NOTIFICATIONS : MOCK_JIRA_TICKETS;
+
+  // Listen for live events hitting the backend
+  useEffect(() => {
+    // Only subscribe if demo mode is active
+    if (!demoMode) return;
+
+    const channel = supabase.channel('public:telemetry_events')
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'telemetry_events',
+        filter: "event_type=eq.webhook_incoming" 
+      }, 
+      (payload) => {
+        const data = payload.new.event_data;
+        if (!data || !data.source || !data.rawContent) return;
+
+        // Transform the backend payload into the frontend Notification interface
+        const incoming: IntegrationNotification = {
+          id: `live-${Date.now()}`,
+          source: data.source as IntegrationSource,
+          sender: data.metadata?.sender || 'Platform Webhook',
+          avatarInitials: data.source === 'slack' ? 'WS' : 'WJ',
+          channel: data.metadata?.title,
+          priority: 'medium',
+          timestamp: 'Just now', // Could parse data.timestamp 
+          rawContent: data.rawContent,
+        };
+
+        setLiveEvents(prev => [incoming, ...prev]);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [demoMode]);
+
+  // Merge live events with base mock items, filtering by the active tab
+  const items = [
+    ...liveEvents.filter(e => e.source === tab),
+    ...baseItems
+  ];
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col h-full max-h-[600px]">
       {/* Panel header */}
-      <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between gap-3 flex-wrap">
+      <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between gap-3 flex-wrap shrink-0">
         <div className="flex items-center gap-2">
           <Radio className="w-4 h-4 text-teal-500 animate-pulse" />
           <span className="text-sm font-bold text-slate-700">Integration Hub</span>
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 border border-teal-200 text-teal-600 font-bold uppercase tracking-wider">
-            Demo Mode
+            Live Webhooks Active
           </span>
         </div>
 
@@ -192,7 +238,7 @@ export const IntegrationDemoPanel: React.FC = () => {
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-slate-100">
+      <div className="flex border-b border-slate-100 shrink-0">
         {(['slack', 'jira'] as Tab[]).map(t => (
           <button
             key={t}
@@ -203,18 +249,31 @@ export const IntegrationDemoPanel: React.FC = () => {
                           : 'text-slate-400 hover:text-slate-600'}`}
           >
             {t === 'slack' ? '💬 Slack' : '📋 Jira'}
+            {liveEvents.filter(e => e.source === t).length > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center w-4 h-4 text-[9px] bg-rose-500 text-white rounded-full">
+                {liveEvents.filter(e => e.source === t).length}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
       {/* Notification list */}
-      <div className="p-4 flex flex-col gap-3 max-h-[480px] overflow-y-auto">
+      <div className="p-4 flex flex-col gap-3 flex-1 overflow-y-auto min-h-0 bg-slate-50/50">
         {!demoMode ? (
-          <div className="flex flex-col items-center justify-center py-12 text-slate-400 text-center gap-2">
+          <div className="flex flex-col items-center justify-center py-12 text-slate-400 text-center gap-2 h-full">
             <Radio className="w-8 h-8 opacity-30" />
             <p className="text-sm font-semibold">Demo mode is off</p>
-            <p className="text-xs">Enable the toggle to see the AI simplification demo</p>
+            <p className="text-xs">Enable the toggle to see live webhooks and AI simplifications.</p>
           </div>
+        ) : items.length === 0 ? (
+           <div className="flex flex-col items-center justify-center py-12 text-slate-400 text-center gap-2 h-full">
+             <div className="w-8 h-8 rounded-full border border-dashed border-slate-300 flex items-center justify-center mb-2 animate-pulse">
+                <Sparkles className="w-4 h-4 text-slate-300" />
+             </div>
+             <p className="text-sm font-semibold">Awaiting Webhooks</p>
+             <p className="text-xs max-w-[200px]">Send a message to your connected Slack channel to see it appear here instantly.</p>
+           </div>
         ) : (
           <AnimatePresence mode="popLayout">
             {items.map(n => (
@@ -226,9 +285,9 @@ export const IntegrationDemoPanel: React.FC = () => {
 
       {/* Footer hint */}
       {demoMode && (
-        <div className="px-4 pb-4 pt-1">
-          <p className="text-[10px] text-slate-400 text-center">
-            Click <strong className="text-teal-600">Simplify with AI</strong> on any notification to see Gemini rewrite it in plain language optimised for neurodivergent users.
+        <div className="px-4 py-3 bg-white border-t border-slate-100 shrink-0">
+          <p className="text-[10px] text-slate-500 text-center">
+            Click <strong className="text-teal-600">Simplify with AI</strong> to rewrite notifications in neurodivergent-friendly plain language.
           </p>
         </div>
       )}

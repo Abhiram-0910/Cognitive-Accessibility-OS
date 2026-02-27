@@ -80,7 +80,7 @@ interface EmotionAverage {
   avg: number;
 }
 
-type DashboardView = 'list' | 'overall' | 'detailed';
+type DashboardView = 'list' | 'overall' | 'detailed' | 'leaderboard';
 
 const EMOTION_COLOURS = ['#818cf8', '#34d399', '#f87171', '#fbbf24', '#a78bfa', '#fb923c', '#38bdf8'];
 
@@ -257,6 +257,61 @@ export default function TeacherDashboard() {
     }
   };
 
+  // ── Leaderboard state ──────────────────────────────────────────────────────
+  const [leaderboard, setLeaderboard] = useState<{name: string, score: number, rank: number}[]>([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+
+  const fetchLeaderboard = useCallback(async () => {
+    setLeaderboardLoading(true);
+    try {
+      // Fetch all sessions to calculate total scores per child
+      const { data, error } = await supabase
+        .from('game_sessions')
+        .select('child_name, score')
+        .not('child_name', 'is', null);
+
+      if (error) throw error;
+
+      // Aggregate scores
+      const scoresMap: Record<string, number> = {};
+      (data || []).forEach(s => {
+        if (s.child_name && typeof s.score === 'number') {
+           scoresMap[s.child_name] = (scoresMap[s.child_name] || 0) + s.score;
+        }
+      });
+
+      // Sort and rank
+      const ranked = Object.entries(scoresMap)
+        .map(([name, score]) => ({ name, score, rank: 0 }))
+        .sort((a, b) => b.score - a.score)
+        .map((entry, i) => ({ ...entry, rank: i + 1 }));
+
+      setLeaderboard(ranked);
+    } catch (err) {
+      console.error('[TeacherDashboard] fetchLeaderboard error:', err);
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  }, []);
+
+  // Listen for real-time game session updates to keep leaderboard live
+  useEffect(() => {
+    const channel = supabase.channel('public:game_sessions')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'game_sessions' }, 
+        () => {
+           if (view === 'leaderboard') fetchLeaderboard();
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [view, fetchLeaderboard]);
+
+  const openLeaderboard = () => {
+    setView('leaderboard');
+    fetchLeaderboard();
+  };
+
   // ── Filtered sessions ──────────────────────────────────────────────────────
   const filteredSessions = sessions.filter(s =>
     (s.session_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -304,13 +359,21 @@ export default function TeacherDashboard() {
                 <h1 className="text-3xl font-black tracking-tight">
                   Sessions {isLoading && <span className="text-2xl">⌛</span>}
                 </h1>
-                <button
-                  onClick={fetchSessions}
-                  disabled={isLoading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 transition disabled:opacity-50"
-                >
-                  <RefreshCw className="w-4 h-4" /> Refresh
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={openLeaderboard}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/20 hover:scale-105 transition"
+                  >
+                    🏆 Leaderboard
+                  </button>
+                  <button
+                    onClick={fetchSessions}
+                    disabled={isLoading}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl bg-white/10 hover:bg-white/20 transition disabled:opacity-50"
+                  >
+                    <RefreshCw className="w-4 h-4" /> Refresh
+                  </button>
+                </div>
               </div>
 
               {/* Search */}
@@ -435,8 +498,8 @@ export default function TeacherDashboard() {
                     {/* Radial / Donut equivalent */}
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                       <h3 className="font-bold mb-4 text-white/60 text-sm uppercase tracking-widest">Emotion Distribution</h3>
-                      <div className="w-full h-[280px] min-h-[280px]" style={{ width: '100%', height: '280px', minHeight: '280px' }}>
-                      <ResponsiveContainer width="100%" height="100%">
+                      <div className="w-full mt-2">
+                      <ResponsiveContainer width="100%" height={280} minWidth={0}>
                         <RadialBarChart
                           cx="50%" cy="50%"
                           innerRadius={30} outerRadius={120}
@@ -460,8 +523,8 @@ export default function TeacherDashboard() {
                     {/* Bar chart */}
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                       <h3 className="font-bold mb-4 text-white/60 text-sm uppercase tracking-widest">Average by Emotion</h3>
-                      <div className="w-full h-[280px] min-h-[280px]" style={{ width: '100%', height: '280px', minHeight: '280px' }}>
-                      <ResponsiveContainer width="100%" height="100%">
+                      <div className="w-full mt-2">
+                      <ResponsiveContainer width="100%" height={280} minWidth={0}>
                         <BarChart data={emotionAverages} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.07)" />
                           <XAxis dataKey="emotion" tick={{ fill: 'rgba(255,255,255,.4)', fontSize: 11 }} />
@@ -542,6 +605,94 @@ export default function TeacherDashboard() {
               )}
               {!detailLoading && !detailedSession && !detailError && (
                 <p className="text-white/30">No data found for this session.</p>
+              )}
+            </motion.div>
+          )}
+
+          {/* ──────────── LEADERBOARD VIEW ──────────── */}
+          {view === 'leaderboard' && (
+            <motion.div key="leaderboard" initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}>
+              <div className="flex items-center gap-3 mb-8">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/30">
+                  <span className="text-2xl">🏆</span>
+                </div>
+                <div>
+                  <h1 className="text-3xl font-black tracking-tight">Global Leaderboard</h1>
+                  <p className="text-white/50 text-sm">Live scores from all players</p>
+                </div>
+              </div>
+
+              {leaderboardLoading ? (
+                <div className="flex items-center justify-center h-64 text-white/30 flex-col gap-4">
+                  <RefreshCw className="w-8 h-8 animate-spin text-amber-500/50" />
+                  <p>Calculating ranks...</p>
+                </div>
+              ) : leaderboard.length === 0 ? (
+                <div className="text-center py-16 bg-white/5 rounded-3xl border border-white/10">
+                  <p className="text-white/40">No game scores recorded yet.</p>
+                </div>
+              ) : (
+                <div className="bg-white/5 border border-white/10 rounded-3xl overflow-hidden p-2">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="text-white/40 text-xs uppercase tracking-widest border-b border-white/10">
+                        <th className="py-4 px-6 font-semibold w-24">Rank</th>
+                        <th className="py-4 px-6 font-semibold">Player</th>
+                        <th className="py-4 px-6 font-semibold text-right">Total Score</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {leaderboard.map((player, idx) => {
+                        const isFirst = player.rank === 1;
+                        const isSecond = player.rank === 2;
+                        const isThird = player.rank === 3;
+                        return (
+                          <motion.tr 
+                            key={player.name}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: idx * 0.05 }}
+                            className={`
+                              border-b border-white/5 last:border-0 transition-colors
+                              ${isFirst ? 'bg-amber-500/10 hover:bg-amber-500/20' : 'hover:bg-white/5'}
+                            `}
+                          >
+                            <td className="py-4 px-6">
+                              <div className="flex items-center gap-2 font-bold text-lg">
+                                <span className={isFirst ? 'text-amber-400' : isSecond ? 'text-slate-300' : isThird ? 'text-orange-400' : 'text-white/30'}>
+                                  #{player.rank}
+                                </span>
+                                {isFirst && <span>🥇</span>}
+                                {isSecond && <span>🥈</span>}
+                                {isThird && <span>🥉</span>}
+                              </div>
+                            </td>
+                            <td className="py-4 px-6">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-sm
+                                  ${isFirst ? 'bg-gradient-to-br from-amber-400 to-orange-500' : 'bg-white/10'}
+                                `}>
+                                  {player.name.charAt(0).toUpperCase()}
+                                </div>
+                                <span className={isFirst ? 'font-bold text-amber-100 text-lg' : 'font-medium text-white/80'}>
+                                  {player.name}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6 text-right">
+                              <div className="inline-flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 font-bold font-mono">
+                                <span>⭐</span>
+                                <span className={isFirst ? 'text-amber-400' : 'text-purple-300'}>
+                                  {player.score.toLocaleString()}
+                                </span>
+                              </div>
+                            </td>
+                          </motion.tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </motion.div>
           )}

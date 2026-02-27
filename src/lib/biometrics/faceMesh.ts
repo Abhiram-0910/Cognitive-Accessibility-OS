@@ -129,6 +129,11 @@ export class BiometricVisionEngine {
   private baselineBrowDistance = 0;
   private calibrationFrames = 0;
 
+  // ── Face-lost tracking ────────────────────────────────────────────────────
+  private faceLostStart: number | null = null;
+  private isFaceLost = false;
+  private readonly FACE_LOST_THRESHOLD_MS = 5000; // 5 seconds
+
   async initialize() {
     const vision = await FilesetResolver.forVisionTasks(
       'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm',
@@ -151,11 +156,15 @@ export class BiometricVisionEngine {
    * @param videoElement  Live webcam `<video>` element
    * @param onTick        Called every processed frame with all 5 metrics
    * @param onFrame       Optional ping for the debug overlay dot
+   * @param onFaceLost    Called when no face detected for >5 seconds
+   * @param onFaceRecovered Called when face returns after being lost
    */
   async startAnalysis(
     videoElement: HTMLVideoElement,
     onTick: (metrics: EmotionMetrics) => void,
     onFrame?: () => void,
+    onFaceLost?: () => void,
+    onFaceRecovered?: () => void,
   ) {
     if (!this.landmarker) await this.initialize();
     this.videoElement = videoElement;
@@ -174,6 +183,15 @@ export class BiometricVisionEngine {
         );
 
         if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+          // ── Face recovered ──────────────────────────────────────────
+          if (this.isFaceLost) {
+            this.isFaceLost = false;
+            this.faceLostStart = null;
+            onFaceRecovered?.();
+          } else {
+            this.faceLostStart = null;
+          }
+
           const landmarks = results.faceLandmarks[0];
 
           // ── Legacy tension (brow-distance based) ──────────────────────
@@ -213,6 +231,16 @@ export class BiometricVisionEngine {
             confusion,
           });
           onFrame?.();
+        } else {
+          // ── No face detected this frame ────────────────────────────────
+          const now = performance.now();
+          if (!this.faceLostStart) {
+            this.faceLostStart = now;
+          } else if (!this.isFaceLost && (now - this.faceLostStart) >= this.FACE_LOST_THRESHOLD_MS) {
+            this.isFaceLost = true;
+            console.warn('[BiometricVisionEngine] Face lost for >5 seconds — triggering telemetry loss.');
+            onFaceLost?.();
+          }
         }
       }
 

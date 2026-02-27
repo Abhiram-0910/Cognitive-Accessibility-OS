@@ -2,9 +2,9 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { Loader2 } from 'lucide-react';
-import { useCognitiveStore } from './stores/cognitiveStore';
+import { useCognitiveStore, UserRole } from './stores/cognitiveStore';
 
-// Pages & Components (Removed .tsx extensions)
+// Pages & Components
 import { AuthPage as Auth } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { Onboarding } from './pages/Onboarding';
@@ -12,6 +12,7 @@ import { Memory } from './pages/Memory';
 import { BodyDoubling } from './pages/BodyDoubling';
 import { ManagerDashboard } from './pages/ManagerDashboard';
 import { CrisisMode } from './components/crisis/CrisisMode';
+import { Unauthorized } from './pages/Unauthorized';
 
 // Kids Module
 import ParentDashboard from './pages/ParentDashboard';
@@ -20,10 +21,28 @@ import GameSelection from './components/kids-module/GameSelection';
 import Game from './components/kids-module/Game';
 import GameTwo from './components/kids-module/GameTwo';
 
-// --- RENDER PROP AUTH GUARD ---
-// Safely manages state and injects the session down to the router
+// ─── Role-Based Route Guard ──────────────────────────────────────────────────
+
+/**
+ * RoleGuard — wraps a route to enforce RBAC.
+ * If the user's role is NOT in the `allowed` array, redirect to /unauthorized.
+ */
+const RoleGuard: React.FC<{
+  userRole: UserRole | null;
+  allowed: UserRole[];
+  children: React.ReactNode;
+}> = ({ userRole, allowed, children }) => {
+  if (!userRole || !allowed.includes(userRole)) {
+    console.warn(`[RBAC] Blocked: role "${userRole}" attempted to access route restricted to [${allowed.join(', ')}]`);
+    return <Navigate to="/unauthorized" replace />;
+  }
+  return <>{children}</>;
+};
+
+// ─── Auth Guard ──────────────────────────────────────────────────────────────
+
 interface AuthGuardProps {
-  children: (session: any, onboardingComplete: boolean) => React.ReactNode;
+  children: (session: any, onboardingComplete: boolean, userRole: UserRole | null) => React.ReactNode;
 }
 
 const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
@@ -31,69 +50,91 @@ const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
   const [session, setSession] = useState<any>(null);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
 
-  // Also read from Zustand — Onboarding.tsx sets this to true immediately before
-  // navigate(), so we don't have to wait for an async DB re-check.
   const storeOnboardingComplete = useCognitiveStore(s => s.onboardingComplete);
   const setStoreOnboardingComplete = useCognitiveStore(s => s.setOnboardingComplete);
+  const userRole = useCognitiveStore(s => s.userRole);
+  const setUserRole = useCognitiveStore(s => s.setUserRole);
 
-  // The effective gate: pass if EITHER source says complete
   const isOnboardingComplete = onboardingComplete || storeOnboardingComplete;
 
+  const stopLoopRef = React.useRef(false);
+
   const checkAuthAndProfile = useCallback(async (currentSession: any) => {
+    if (stopLoopRef.current) return;
+    stopLoopRef.current = true; // Prevent rapid re-firing
+    
+    // REMOVED: setLoading(true) to prevent destroying the <Router> mid-session!
+
     if (!currentSession) {
       setSession(null);
       setOnboardingComplete(false);
+      setUserRole(null);
       setLoading(false);
       window.postMessage({ type: 'NEUROADAPT_AUTH', status: 'unauthenticated' }, '*');
+      setTimeout(() => { stopLoopRef.current = false; }, 2000); // Release lock
       return;
     }
 
     setSession(currentSession);
-    window.postMessage({ 
-      type: 'NEUROADAPT_AUTH', 
-      status: 'authenticated', 
+    window.postMessage({
+      type: 'NEUROADAPT_AUTH',
+      status: 'authenticated',
       userId: currentSession.user.id,
     }, '*');
 
     try {
-      const { data: profile } = await supabase
+      const { data: profile, error } = await supabase
         .from('profiles')
-        .select('cognitive_profile')
+        .select('cognitive_profile, user_role')
         .eq('id', currentSession.user.id)
         .single();
+      
+      let finalProfile: any = profile;
 
-      const isComplete = profile?.cognitive_profile && Object.keys(profile.cognitive_profile).length > 0;
+      if (error) {
+        // If the user_role column doesn't exist, it throws a 400 error.
+        console.warn("[AuthGuard] Profile check failed, attempting fallback:", error.message);
+        const { data: fallbackData } = await supabase
+          .from('profiles')
+          .select('cognitive_profile')
+          .eq('id', currentSession.user.id)
+          .single();
+        finalProfile = fallbackData;
+      }
+
+      const isComplete = finalProfile?.cognitive_profile && Object.keys(finalProfile.cognitive_profile).length > 0;
       setOnboardingComplete(!!isComplete);
-      // Sync to Zustand so the flag persists across navigations without re-fetching
       setStoreOnboardingComplete(!!isComplete);
+
+      // Sync role from DB into Zustand
+      if (finalProfile?.user_role) {
+        setUserRole(finalProfile.user_role as UserRole);
+      }
     } catch (error) {
-      console.error("[AuthGuard] Profile check failed:", error);
+      console.error("[AuthGuard] Profile check crashed:", error);
     } finally {
       setLoading(false);
+      // Allow re-checking after 2 seconds to prevent rapid loop
+      setTimeout(() => { stopLoopRef.current = false; }, 2000);
     }
-  }, [setStoreOnboardingComplete]);
+  }, [setStoreOnboardingComplete, setUserRole]);
 
   useEffect(() => {
-    // Initial Load
     supabase.auth.getSession().then(({ data: { session } }) => {
       checkAuthAndProfile(session);
     });
 
-    // Subscriptions
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
-      // 🛑 THE SOFT KICK-OUT FIX
       if (event === 'SIGNED_OUT') {
         alert("⚠️ Session expired. Please save your work and refresh the page to log in again.");
-        return; // Halt execution. Do NOT update state or kick them out of the current route.
+        return;
       }
-      
-      // Quietly update tokens in the background without triggering loading screens
+
       if (event === 'TOKEN_REFRESHED') {
         setSession(currentSession);
         return;
       }
 
-      setLoading(true);
       checkAuthAndProfile(currentSession);
     });
 
@@ -108,11 +149,35 @@ const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     );
   }
 
-  // Pass state safely to children — use the merged flag
-  return <>{children(session, isOnboardingComplete)}</>;
+  return <>{children(session, isOnboardingComplete, userRole)}</>;
 };
 
-// --- MAIN ROUTER ---
+// ─── Role-Aware Home Redirect ─────────────────────────────────────────────────
+
+/**
+ * Redirects authenticated users to the correct home dashboard based on their role.
+ */
+const RoleHomeRedirect: React.FC<{
+  userRole: UserRole | null;
+  onboardingComplete: boolean;
+  userId: string;
+}> = ({ userRole, onboardingComplete, userId }) => {
+  switch (userRole) {
+    case 'admin':
+      return <ManagerDashboard />;
+    case 'employee':
+      return onboardingComplete ? <Dashboard userId={userId} /> : <Navigate to="/onboarding" replace />;
+    case 'child':
+      return <Navigate to="/kids/games" replace />;
+    case 'parent':
+      return <Navigate to="/kids/parent" replace />;
+    default:
+      return <Navigate to="/auth" replace />;
+  }
+};
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
+
 export default function App() {
   const cognitiveLoadScore = useCognitiveStore((state) => state.cognitiveLoadScore);
 
@@ -122,58 +187,103 @@ export default function App() {
       {cognitiveLoadScore >= 90 && <CrisisMode />}
 
       <AuthGuard>
-        {(session, onboardingComplete) => (
+        {(session, onboardingComplete, userRole) => (
           <Routes>
-            {/* Public Routes */}
-            <Route path="/auth" element={!session ? <Auth /> : <Navigate to="/" replace />} />
-            
-            {/* Onboarding Route */}
+            {/* ── Public Routes ────────────────────────────────────────── */}
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/unauthorized" element={<Unauthorized />} />
+
+            {/* ── Onboarding (Employee/Admin only) ─────────────────────── */}
             <Route path="/onboarding" element={
-              session ? (!onboardingComplete ? <Onboarding /> : <Navigate to="/" replace />) : <Navigate to="/auth" replace />
+              session ? (
+                !userRole ? <Navigate to="/auth" replace /> :
+                (!onboardingComplete ? <Onboarding /> : <Navigate to="/" replace />)
+              ) : <Navigate to="/auth" replace />
             } />
 
-            {/* Protected OS Routes */}
+            {/* ── Home Route (Role-aware redirect) ──────────────────── */}
             <Route path="/" element={
-              session ? (onboardingComplete ? <Dashboard userId={session.user.id} /> : <Navigate to="/onboarding" replace />) : <Navigate to="/auth" replace />
+              session
+                ? (userRole ? <RoleHomeRedirect userRole={userRole} onboardingComplete={onboardingComplete} userId={session.user.id} /> : <Navigate to="/auth" replace />)
+                : <Navigate to="/auth" replace />
             } />
-            
+
+            {/* ── Employee/Admin Routes ────────────────────────────── */}
+            <Route path="/dashboard" element={
+              session ? (
+                <RoleGuard userRole={userRole} allowed={['employee', 'admin']}>
+                  {onboardingComplete ? <Dashboard userId={session.user.id} /> : <Navigate to="/onboarding" replace />}
+                </RoleGuard>
+              ) : <Navigate to="/auth" replace />
+            } />
+
             <Route path="/memory" element={
-              session ? (onboardingComplete ? <Memory userId={session.user.id} /> : <Navigate to="/onboarding" replace />) : <Navigate to="/auth" replace />
+              session ? (
+                <RoleGuard userRole={userRole} allowed={['employee', 'admin']}>
+                  {onboardingComplete ? <Memory userId={session.user.id} /> : <Navigate to="/onboarding" replace />}
+                </RoleGuard>
+              ) : <Navigate to="/auth" replace />
             } />
-            
+
             <Route path="/body-doubling" element={
-              session ? (onboardingComplete ? <BodyDoubling /> : <Navigate to="/onboarding" replace />) : <Navigate to="/auth" replace />
+              session ? (
+                <RoleGuard userRole={userRole} allowed={['employee', 'admin']}>
+                  {onboardingComplete ? <BodyDoubling /> : <Navigate to="/onboarding" replace />}
+                </RoleGuard>
+              ) : <Navigate to="/auth" replace />
             } />
-            
+
+            {/* ── Admin-Only Routes ───────────────────────────────── */}
             <Route path="/manager" element={
-              session ? <ManagerDashboard /> : <Navigate to="/auth" replace />
+              session ? (
+                <RoleGuard userRole={userRole} allowed={['admin']}>
+                  <ManagerDashboard />
+                </RoleGuard>
+              ) : <Navigate to="/auth" replace />
             } />
 
-            {/* ── Kids Module Routes ────────────────────────────────────────── */}
-            {/* These routes require authentication but NOT onboarding completion */}
-            {/* so a parent/teacher/child can access them immediately after login. */}
-
+            {/* ── Kids Module Routes (Parent, Child, Teacher, Admin) ─ */}
             <Route path="/kids/parent" element={
-              session ? <ParentDashboard /> : <Navigate to="/auth" replace />
+              session ? (
+                <RoleGuard userRole={userRole} allowed={['parent', 'admin']}>
+                  <ParentDashboard />
+                </RoleGuard>
+              ) : <Navigate to="/auth" replace />
             } />
 
             <Route path="/kids/teacher" element={
-              session ? <TeacherDashboard /> : <Navigate to="/auth" replace />
+              session ? (
+                <RoleGuard userRole={userRole} allowed={['parent', 'admin']}>
+                  <TeacherDashboard />
+                </RoleGuard>
+              ) : <Navigate to="/auth" replace />
             } />
 
             <Route path="/kids/games" element={
-              session ? <GameSelection /> : <Navigate to="/auth" replace />
+              session ? (
+                <RoleGuard userRole={userRole} allowed={['child', 'parent', 'admin']}>
+                  <GameSelection />
+                </RoleGuard>
+              ) : <Navigate to="/auth" replace />
             } />
 
             <Route path="/kids/play/1" element={
-              session ? <Game /> : <Navigate to="/auth" replace />
+              session ? (
+                <RoleGuard userRole={userRole} allowed={['child', 'parent', 'admin']}>
+                  <Game />
+                </RoleGuard>
+              ) : <Navigate to="/auth" replace />
             } />
 
             <Route path="/kids/play/2" element={
-              session ? <GameTwo /> : <Navigate to="/auth" replace />
+              session ? (
+                <RoleGuard userRole={userRole} allowed={['child', 'parent', 'admin']}>
+                  <GameTwo />
+                </RoleGuard>
+              ) : <Navigate to="/auth" replace />
             } />
 
-            {/* Fallback */}
+            {/* ── Fallback ────────────────────────────────────────── */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         )}

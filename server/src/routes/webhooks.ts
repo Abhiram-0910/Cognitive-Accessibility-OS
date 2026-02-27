@@ -1,9 +1,18 @@
 import { Router, Request, Response } from 'express';
 
-// Replace the import with a stub function since backgroundIndexer is actually in the frontend
+import { supabaseAdmin } from '../utils/supabaseAdmin';
+
 const processIncomingWebhook = async (payload: any) => {
-    console.log("Webhook received:", payload);
-    return true;
+  // Push the event to Supabase Realtime so the frontend (IntegrationDemoPanel) can instantly react to it
+  const { error } = await supabaseAdmin.from('telemetry_events').insert({
+    user_id: payload.userId,
+    event_type: 'webhook_incoming',
+    event_data: payload,
+    created_at: new Date().toISOString()
+  });
+  
+  if (error) console.error('[Webhook] Failed to log event:', error);
+  return true;
 };
 
 export const setupWebhookRoutes = () => {
@@ -44,13 +53,33 @@ export const setupWebhookRoutes = () => {
     const channelId = req.headers['x-goog-channel-id'] as string;
     const resourceState = req.headers['x-goog-resource-state'] as string;
 
-    // Acknowledge receipt
     res.status(200).send('OK');
 
     if (resourceState === 'exists') {
       console.log(`[Webhook] Calendar updated for channel: ${channelId}`);
-      // Trigger a sync job to pull the new calendar data and update the user's Burnout Forecast
-      // e.g., googleIntegration.syncCalendar(channelId)
+    }
+  });
+
+  // JIRA WEBHOOK
+  router.post('/jira', async (req: Request, res: Response) => {
+    const event = req.body;
+    
+    // Acknowledge receipt
+    res.status(200).send('OK');
+
+    if (event && event.issue) {
+      // Note: This relies on Jira webhook payload structure
+      processIncomingWebhook({
+        source: 'jira',
+        eventId: event.issue.id,
+        userId: 'system_mapped_user_id', // Would map to actual Supabase ID in production
+        timestamp: new Date().toISOString(),
+        rawContent: event.issue.fields?.description ?? 'No description provided.',
+        metadata: {
+          title: event.issue.fields?.summary ?? 'New Jira Issue',
+          key: event.issue.key
+        }
+      });
     }
   });
 

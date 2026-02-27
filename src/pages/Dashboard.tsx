@@ -146,7 +146,7 @@ const KIDS_PORTALS = [
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export const Dashboard: React.FC<{ userId: string }> = ({ userId }) => {
-  const { permissionsGranted, setPermissionsGranted } = useCognitiveStore();
+  const { permissionsGranted, setPermissionsGranted, userRole } = useCognitiveStore();
   const frameCounter = useRef(0);
 
   // Increment frameCounter on every processed biometric frame
@@ -359,51 +359,55 @@ export const Dashboard: React.FC<{ userId: string }> = ({ userId }) => {
           </main>
 
           {/* ── Nexus Kids Module Entry Point ─────────────────────────────────── */}
-          <section className="mt-4">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="text-xl">🧩</span>
-              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-widest">
-                Nexus Kids Module
-              </h2>
-              <div className="flex-1 h-px bg-slate-100" />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {KIDS_PORTALS.map((portal, i) => (
-                <motion.div
-                  key={portal.to}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.08 }}
-                  whileHover={{ y: -4, scale: 1.02 }}
-                  className="group"
-                >
-                  <Link
-                    to={portal.to}
-                    className={`flex flex-col gap-2 p-5 rounded-2xl bg-gradient-to-br ${portal.accent}
-                                text-white shadow-lg hover:shadow-xl transition-shadow`}
+          {(userRole === 'admin' || userRole === 'parent') && (
+            <section className="mt-4">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-xl">🧩</span>
+                <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-widest">
+                  Nexus Kids Module
+                </h2>
+                <div className="flex-1 h-px bg-slate-100" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {KIDS_PORTALS.map((portal, i) => (
+                  <motion.div
+                    key={portal.to}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.08 }}
+                    whileHover={{ y: -4, scale: 1.02 }}
+                    className="group"
                   >
-                    <span className="text-lg font-bold leading-snug">{portal.label}</span>
-                    <span className="text-white/70 text-xs">{portal.sub}</span>
-                    <span className="mt-1 text-white/50 text-xs group-hover:text-white/80 transition-colors">
-                      Open →
-                    </span>
-                  </Link>
-                </motion.div>
-              ))}
-            </div>
-          </section>
+                    <Link
+                      to={portal.to}
+                      className={`flex flex-col gap-2 p-5 rounded-2xl bg-gradient-to-br ${portal.accent}
+                                  text-white shadow-lg hover:shadow-xl transition-shadow`}
+                    >
+                      <span className="text-lg font-bold leading-snug">{portal.label}</span>
+                      <span className="text-white/70 text-xs">{portal.sub}</span>
+                      <span className="mt-1 text-white/50 text-xs group-hover:text-white/80 transition-colors">
+                        Open →
+                      </span>
+                    </Link>
+                  </motion.div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* ── Integration Hub — Slack / Jira Demo ───────────────────────── */}
-          <section className="mt-4">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="text-xl">🔗</span>
-              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-widest">
-                Workspace Integrations
-              </h2>
-              <div className="flex-1 h-px bg-slate-100" />
-            </div>
-            <IntegrationDemoPanel />
-          </section>
+          {(userRole === 'admin' || userRole === 'employee') && (
+            <section className="mt-4">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-xl">🔗</span>
+                <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-widest">
+                  Workspace Integrations
+                </h2>
+                <div className="flex-1 h-px bg-slate-100" />
+              </div>
+              <IntegrationDemoPanel />
+            </section>
+          )}
 
         </div>
 

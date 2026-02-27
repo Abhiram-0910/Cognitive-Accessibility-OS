@@ -131,6 +131,12 @@ export default function GameSelection() {
                 src={game.image}
                 alt={game.title}
                 className="w-36 h-36 object-contain drop-shadow-lg group-hover:scale-105 transition-transform"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  target.onerror = null; // Prevent infinite loop
+                  target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144"><rect fill="%231e1b4b" width="144" height="144" rx="16"/><text x="72" y="82" text-anchor="middle" font-size="48">🎮</text></svg>';
+                  console.error(`[GameSelection] ⚠ Failed to load asset: ${game.image}`);
+                }}
               />
               <div className="text-center">
                 <h2 className="text-xl font-black tracking-wide text-yellow-300">

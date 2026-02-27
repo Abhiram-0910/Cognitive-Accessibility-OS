@@ -376,7 +376,186 @@ export default function ParentDashboard() {
           )}
         </div>
 
+        {/* ── Session Reports Panel ──────────────────────────────────────────── */}
+        <div className="bg-white/5 border border-white/10 rounded-3xl p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <svg className="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <h2 className="text-xl font-bold">Session Reports</h2>
+          </div>
+
+          {!childAccounts || childAccounts.length === 0 ? (
+            <div className="text-white/40 text-sm italic">Create a child account to view game reports.</div>
+          ) : (
+            <SessionReportsList childAccounts={childAccounts} />
+          )}
+        </div>
+
       </div>
+    </div>
+  );
+}
+
+// ─── Sub-Component: Session Reports List ──────────────────────────────────────
+
+function SessionReportsList({ childAccounts }: { childAccounts: ChildAccount[] }) {
+  const [selectedChildId, setSelectedChildId] = useState<string>(childAccounts[0]?.id || '');
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [expandedSession, setExpandedSession] = useState<string | null>(null);
+  const [reportData, setReportData] = useState<Record<string, any>>({});
+  const [loadingReport, setLoadingReport] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedChildId) return;
+    const fetchSessions = async () => {
+      setLoading(true);
+      const child = childAccounts.find(c => c.id === selectedChildId);
+      const { data } = await supabase
+        .from('game_sessions')
+        .select('*')
+        .eq('child_name', child?.child_name)
+        .order('completed_at', { ascending: false })
+        .limit(10);
+      setSessions(data || []);
+      setLoading(false);
+    };
+    fetchSessions();
+  }, [selectedChildId, childAccounts]);
+
+  const toggleSession = async (sessionId: string) => {
+    if (expandedSession === sessionId) {
+      setExpandedSession(null);
+      return;
+    }
+    setExpandedSession(sessionId);
+
+    // Fetch report data if not already cached
+    if (!reportData[sessionId]) {
+      setLoadingReport(sessionId);
+      try {
+        const backendUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+        const res = await fetch(`${backendUrl}/agents/session-report/${sessionId}`);
+        const json = await res.json();
+        
+        if (json.success && json.report) {
+          setReportData(prev => ({ ...prev, [sessionId]: json.report }));
+        } else if (json.status === 'pending') {
+           setReportData(prev => ({ ...prev, [sessionId]: { pending: true } }));
+        }
+      } catch (err) {
+        console.error('Failed to fetch report:', err);
+      } finally {
+        setLoadingReport(null);
+      }
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Child selector tabs */}
+      <div className="flex gap-2 border-b border-white/10 pb-4 overflow-x-auto">
+        {childAccounts.map(child => (
+          <button
+            key={child.id}
+            onClick={() => setSelectedChildId(child.id)}
+            className={`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
+              selectedChildId === child.id 
+                ? 'bg-purple-500 text-white' 
+                : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80'
+            }`}
+          >
+            {child.child_name}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+         <div className="flex items-center gap-2 text-white/30 py-4"><Loader2 className="w-4 h-4 animate-spin" /> Loading sessions...</div>
+      ) : sessions.length === 0 ? (
+         <div className="text-white/40 text-sm py-4">No completed game sessions found for this child.</div>
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {sessions.map(s => {
+            const date = new Date(s.completed_at || s.created_at).toLocaleString();
+            const duration = s.duration_seconds ? `${Math.round(s.duration_seconds / 60)}m ${s.duration_seconds % 60}s` : 'Unknown';
+            const isExpanded = expandedSession === s.session_key;
+            const report = reportData[s.session_key];
+
+            return (
+              <li key={s.session_key} className="flex flex-col bg-white/5 border border-white/10 rounded-2xl overflow-hidden transition-all">
+                {/* Header (clickable) */}
+                <div 
+                  onClick={() => toggleSession(s.session_key)}
+                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-white/5"
+                >
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-purple-200">{s.game_name}</span>
+                    <span className="text-xs text-white/40">{date} · {duration} · Score: {s.score}</span>
+                  </div>
+                  <ChevronDown className={`w-5 h-5 text-white/40 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                </div>
+
+                {/* Expanded Content (HuggingFace Report) */}
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="border-t border-white/5 bg-black/20 p-4"
+                    >
+                      {loadingReport === s.session_key ? (
+                        <div className="flex items-center gap-2 text-purple-300 text-sm"><Loader2 className="w-4 h-4 animate-spin"/> Generating AI inference report...</div>
+                      ) : report?.pending ? (
+                        <div className="text-amber-300 text-sm flex items-center gap-2">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          Analysis is currently running. Please check back later.
+                        </div>
+                      ) : report ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <div className="bg-white/5 rounded-xl p-3 border border-white/5">
+                             <div className="text-xs text-white/40 uppercase tracking-wider mb-1">Dominant Emotion</div>
+                             <div className="text-2xl font-bold capitalize text-white flex items-center gap-2">
+                               {report.dominant_emotion === 'happy' ? '😊 Happy' : 
+                                report.dominant_emotion === 'neutral' ? '😐 Focused' : 
+                                report.dominant_emotion === 'frustration' ? '😠 Frustrated' : report.dominant_emotion}
+                             </div>
+                             <div className="text-xs text-teal-300 mt-1">Analyzed {report.analyzed_frames} webcam frames natively via HuggingFace ViT.</div>
+                           </div>
+
+                           <div className="bg-white/5 rounded-xl p-3 border border-white/5">
+                             <div className="text-xs text-white/40 uppercase tracking-wider mb-2">Expression Breakdown</div>
+                             {Object.entries(report.emotion_breakdown || {}).sort(([,a]: any, [,b]: any) => b - a).slice(0,3).map(([emo, pct]: any) => (
+                               <div key={emo} className="flex items-center gap-2 mb-1.5 text-sm">
+                                 <div className="w-16 capitalize text-white/80">{emo}</div>
+                                 <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
+                                   <div className="h-full bg-purple-500 rounded-full" style={{ width: `${pct}%` }}></div>
+                                 </div>
+                                 <div className="w-8 text-right text-xs text-white/60">{pct}%</div>
+                               </div>
+                             ))}
+                           </div>
+
+                           <div className="md:col-span-2 pt-2 border-t border-white/10 flex justify-end">
+                             <button className="text-xs px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-300 rounded-lg flex items-center gap-1.5 transition">
+                               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                               Download PDF Report
+                             </button>
+                           </div>
+                        </div>
+                      ) : (
+                        <div className="text-rose-300 text-sm text-center py-2">Report unavailable.</div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

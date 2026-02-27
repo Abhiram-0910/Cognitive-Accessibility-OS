@@ -148,8 +148,8 @@ export const ManagerDashboard: React.FC = () => {
 
                 <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-100" style={{ height: '300px' }}>
                   <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Cumulative Savings Trajectory</h4>
-                  <div className="w-full h-[220px] min-h-[220px]" style={{ width: '100%', height: '220px', minHeight: '220px' }}>
-                    <ResponsiveContainer width="100%" height="100%">
+                  <div className="w-full mt-2">
+                    <ResponsiveContainer width="100%" height={220} minWidth={0}>
                     <BarChart data={roiChartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                       <XAxis dataKey="quarter" axisLine={false} tickLine={false} tick={{ fill: '#94A3B8', fontSize: 12 }} dy={10} />
@@ -200,8 +200,8 @@ export const ManagerDashboard: React.FC = () => {
                 <h3 className="text-lg font-semibold text-slate-800 mb-2">Digital Prosthetic Utilization</h3>
                 <p className="text-sm text-slate-500 mb-6">Anonymous breakdown of active structural accommodations.</p>
                 
-                <div className="w-full h-[320px] min-h-[320px]" style={{ width: '100%', height: '320px', minHeight: '320px' }}>
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="w-full mt-2">
+                  <ResponsiveContainer width="100%" height={320} minWidth={0}>
                     <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data.deiAccommodations}>
                       <PolarGrid stroke="#E2E8F0" />
                       <PolarAngleAxis dataKey="metric" tick={{ fill: '#475569', fontSize: 11, fontWeight: 600 }} />

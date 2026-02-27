@@ -9,13 +9,16 @@
  *  - CrisisMode.tsx          → reads loadScore, writes crisisActive
  *  - Dashboard.tsx           → reads everything
  *  - BodyDoubling.tsx        → reads classification
- *  - AuthGuard / App.tsx     → reads onboardingComplete
+ *  - AuthGuard / App.tsx     → reads onboardingComplete, userRole
  *  - useDemoSimulator.ts     → writes metrics via updateMetrics
+ *  - RoleGuard (App.tsx)     → reads userRole for RBAC routing
  */
 
 import { create } from 'zustand';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+export type UserRole = 'admin' | 'employee' | 'child' | 'parent';
 
 export type CognitiveClassification =
   | 'hyperfocus'
@@ -41,6 +44,7 @@ interface CognitiveState {
   classification: CognitiveClassification;
 
   // ── UI flags ──────────────────────────────────────────────────────────────
+  userRole: UserRole | null;
   permissionsGranted: boolean;
   onboardingComplete: boolean;
 
@@ -62,6 +66,7 @@ interface CognitiveState {
   setOnboardingComplete: (complete: boolean) => void;
   setCrisisActive: (active: boolean) => void;
   setCurrentTaskCategory: (category: string) => void;
+  setUserRole: (role: UserRole | null) => void;
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -79,6 +84,7 @@ export const useCognitiveStore = create<CognitiveState>((set) => ({
   },
   cognitiveLoadScore: 0,
   classification: 'normal',
+  userRole: null,
   permissionsGranted: false,
   onboardingComplete: false,
   crisisActive: false,
@@ -95,4 +101,5 @@ export const useCognitiveStore = create<CognitiveState>((set) => ({
   setOnboardingComplete: (complete) => set({ onboardingComplete: complete }),
   setCrisisActive: (active) => set({ crisisActive: active }),
   setCurrentTaskCategory: (category) => set({ currentTaskCategory: category }),
+  setUserRole: (role) => set({ userRole: role }),
 }));
