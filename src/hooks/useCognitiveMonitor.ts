@@ -9,7 +9,7 @@ const PAUSE_THRESHOLD_MS = 3000;
 const ROLLING_WINDOW_MS = 60000;
 
 export const useCognitiveMonitor = () => {
-  const { updateMetrics, permissionsGranted } = useCognitiveStore();
+  const { updateMetrics, permissionsGranted, setPermissionsGranted } = useCognitiveStore();
 
   const metrics = useRef({
     totalKeystrokes: 0,
@@ -79,6 +79,15 @@ export const useCognitiveMonitor = () => {
     initCognitiveModel().catch(console.error);
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // ── Ctrl+Shift+D — Toggle telemetry / demo mode ───────────────────────
+      // preventDefault stops the browser from opening DevTools on some configurations.
+      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+        e.preventDefault();
+        e.stopPropagation();
+        setPermissionsGranted(!permissionsGranted);
+        return;
+      }
+
       if (!ticking) {
         requestAnimationFrame(() => {
           const now = Date.now();
@@ -101,7 +110,7 @@ export const useCognitiveMonitor = () => {
     const handleWindowBlur = () => { metrics.current.contextSwitches += 1; };
 
     // Bind Listeners
-    window.addEventListener('keydown', handleKeyDown, { passive: true });
+    window.addEventListener('keydown', handleKeyDown, { passive: false });
     document.addEventListener('visibilitychange', handleVisibilityChange, { passive: true });
     window.addEventListener('blur', handleWindowBlur, { passive: true });
 

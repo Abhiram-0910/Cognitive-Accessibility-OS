@@ -44,9 +44,13 @@ export const useDemoSimulator = (userId: string | null) => {
             }
           }
 
-          // 2. Bulk insert into Supabase (Assume you have a cognitive_snapshots table)
+          // 2. Try to bulk insert into Supabase — but don't crash if the table doesn't exist.
+          // The cognitive_snapshots table is optional; the demo still works via the
+          // real-time Zustand store spike below even without it.
           const { error } = await supabase.from('cognitive_snapshots').insert(mockSnapshots);
-          if (error) throw error;
+          if (error) {
+            console.warn('[Demo Simulator] DB insert skipped (table may not exist):', error.message);
+          }
 
           // 3. Immediately spike the real-time store to trigger the 'Approaching Overload' UI
           updateMetrics({

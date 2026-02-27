@@ -29,19 +29,31 @@ Output strictly as a JSON array of objects matching this schema:
 `;
 
 export async function generateMicroTasks(taskDescription: string): Promise<MicroTask[]> {
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:3000';
+  
   try {
-    const prompt = `${SYSTEM_INSTRUCTION}\n\nOverwhelming Task:\n"${taskDescription}"\n\nJSON Output:`;
-    
-    // Route securely through the Node.js backend proxy
-    const result = await callAgent<MicroTask[]>({
-      prompt: prompt,
-      model: 'gemini-1.5-flash',
-      jsonMode: true
+    // Use the dedicated /chunk-task endpoint for explicit semantic routing.
+    // That route has the full neurodivergent-optimised prompt built into the backend.
+    const res = await fetch(`${BACKEND_URL}/api/agents/chunk-task`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task: taskDescription }),
+      signal: AbortSignal.timeout(12_000),
     });
-    
-    return result;
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (!json.success || !Array.isArray(json.steps)) throw new Error('Invalid response shape');
+    return json.steps as MicroTask[];
   } catch (error) {
-    console.error("Task Agent Error:", error);
-    throw new Error("Failed to generate micro-tasks via secure proxy.");
+    // Fallback: route through the generic /generate endpoint
+    console.warn('[taskAgent] /chunk-task failed, falling back to /generate:', error);
+    const prompt = `${SYSTEM_INSTRUCTION}\n\nOverwhelming Task:\n"${taskDescription}"\n\nJSON Output:`;
+    const result = await callAgent<MicroTask[]>({
+      prompt,
+      model: 'gemini-2.0-flash',
+      jsonMode: true,
+    });
+    return result;
   }
 }

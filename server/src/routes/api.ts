@@ -1,18 +1,31 @@
 import { Router, Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
 
-// Initialize Supabase Admin Client (Requires SUPABASE_SERVICE_ROLE_KEY)
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
-
 export const setupApiRoutes = () => {
+  // ── Lazy Supabase init (runs AFTER dotenv.config() in server.ts) ─────────────
+  // DO NOT move createClient to module top-level — it would run before dotenv fires.
+  const supabaseUrl =
+    process.env.SUPABASE_URL ||
+    process.env.VITE_SUPABASE_URL ||
+    '';
+  const supabaseKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY ||
+    '';
+
+  if (!supabaseUrl || !supabaseKey) {
+    console.error(
+      '❌ CRITICAL: Missing Supabase environment variables in server/.env\n' +
+      '   Expected: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_ANON_KEY)'
+    );
+  }
+
+  const supabaseAdmin = createClient(supabaseUrl, supabaseKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+
   const router = Router();
 
   /**

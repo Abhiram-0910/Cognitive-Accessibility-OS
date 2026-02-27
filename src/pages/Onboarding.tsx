@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useCognitiveStore } from '../stores/cognitiveStore';
 import { Loader2, ArrowRight, ArrowLeft, ShieldCheck } from 'lucide-react';
 
 type Step = 1 | 2 | 3 | 4 | 5;
@@ -14,6 +15,7 @@ interface OnboardingData {
 
 export const Onboarding: React.FC = () => {
   const navigate = useNavigate();
+  const setOnboardingComplete = useCognitiveStore(s => s.setOnboardingComplete);
   const [step, setStep] = useState<Step>(1);
   const [loading, setLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
@@ -35,25 +37,45 @@ export const Onboarding: React.FC = () => {
   const handleComplete = async () => {
     if (!userId) return;
     setLoading(true);
-    
+
     try {
-      // Upsert profile data
-      const { error } = await supabase.from('profiles').upsert({
-        id: userId,
-        cognitive_preferences: {
-          communication_style: formData.communication_style,
-          sensory_tolerance: formData.sensory_tolerance,
-          focus_pattern: formData.focus_pattern,
-        },
-        privacy_settings: {
-          telemetry_enabled: formData.telemetry_enabled,
-        }
-      });
+      // ─── THE FIX ──────────────────────────────────────────────────────────
+      // AuthGuard (App.tsx) checks: profile.cognitive_profile && Object.keys(...).length > 0
+      // The original code wrote to `cognitive_preferences` — a DIFFERENT column.
+      // That left `cognitive_profile` empty, causing AuthGuard to loop back to /onboarding.
+      //
+      // Fix: write the user's choices into `cognitive_profile` (what AuthGuard reads),
+      // AND mirror into `cognitive_preferences` for any other consumers.
+      // ──────────────────────────────────────────────────────────────────────
+      const profilePayload = {
+        communication_style: formData.communication_style,
+        sensory_tolerance: formData.sensory_tolerance,
+        focus_pattern: formData.focus_pattern,
+      };
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          // ✅ This is what AuthGuard reads — must be non-empty to pass the gate
+          cognitive_profile: profilePayload,
+          // Legacy / additional consumers
+          cognitive_preferences: profilePayload,
+          privacy_settings: {
+            telemetry_enabled: formData.telemetry_enabled,
+          },
+        })
+        .eq('id', userId);
 
       if (error) throw error;
-      navigate('/dashboard');
+
+      // ✅ Set Zustand flag BEFORE navigating.
+      // AuthGuard reads `storeOnboardingComplete || onboardingComplete`.
+      // This guarantees the gate is open on the very next render — no async
+      // re-check or auth event required.
+      setOnboardingComplete(true);
+      navigate('/');
     } catch (error) {
-      console.error("Failed to save profile:", error);
+      console.error('Failed to save profile:', error);
       setLoading(false);
     }
   };

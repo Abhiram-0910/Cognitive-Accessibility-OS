@@ -26,7 +26,7 @@ export const translateOutboundCommunication = async (bluntInput: string): Promis
     // Route securely through the Node.js backend proxy
     const result = await callAgent<OutboundResult>({
       prompt: prompt,
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.0-flash',
       jsonMode: true
     });
     

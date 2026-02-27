@@ -23,7 +23,11 @@ export class BiometricVisionEngine {
     });
   }
 
-  async startAnalysis(videoElement: HTMLVideoElement, onTick: (metrics: { tension: number, gazeWander: number }) => void) {
+  async startAnalysis(
+    videoElement: HTMLVideoElement,
+    onTick: (metrics: { tension: number, gazeWander: number }) => void,
+    onFrame?: () => void   // ← fires every processed frame — used by the debug overlay
+  ) {
     if (!this.landmarker) await this.initialize();
     this.videoElement = videoElement;
     this.isRunning = true;
@@ -62,6 +66,7 @@ export class BiometricVisionEngine {
             tension: Math.min(100, tensionScore * 1000), 
             gazeWander: Math.min(100, gazeWanderScore * 100),
           });
+          onFrame?.(); // ← ping the debug overlay
         }
       }
       // Only request the next frame if we are still running

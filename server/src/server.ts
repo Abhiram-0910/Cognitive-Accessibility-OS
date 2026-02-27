@@ -1,17 +1,24 @@
+// ⚠️  dotenv MUST be the very first import + call, before ANY local module imports.
+// In CommonJS, imported modules are evaluated immediately (synchronously) at require()
+// time — meaning api.ts, supabaseAdmin.ts, etc. all run their top-level code BEFORE
+// execution returns here. If dotenv.config() is called after those imports, env vars
+// are undefined when those modules initialize their Supabase clients.
+import dotenv from 'dotenv';
+dotenv.config();
+
+// ── Third-party ───────────────────────────────────────────────────────────────
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
 
+// ── Local modules (env vars are populated by this point) ──────────────────────
 import { setupApiRoutes } from './routes/api';
 import { agentRoutes } from './routes/agents';
 import { setupSocketHandlers } from './sockets/cognitiveStream';
 import { setupGoogleAuthRoutes } from './integrations/google';
-
-dotenv.config();
 
 // 🛑 Strict Fail-Fast Environment Check for AI API
 if (!process.env.GEMINI_API_KEY) {

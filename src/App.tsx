@@ -5,13 +5,20 @@ import { Loader2 } from 'lucide-react';
 import { useCognitiveStore } from './stores/cognitiveStore';
 
 // Pages & Components (Removed .tsx extensions)
-import { Auth } from './pages/Auth';
+import { AuthPage as Auth } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { Onboarding } from './pages/Onboarding';
 import { Memory } from './pages/Memory';
 import { BodyDoubling } from './pages/BodyDoubling';
 import { ManagerDashboard } from './pages/ManagerDashboard';
 import { CrisisMode } from './components/crisis/CrisisMode';
+
+// Kids Module
+import ParentDashboard from './pages/ParentDashboard';
+import TeacherDashboard from './pages/TeacherDashboard';
+import GameSelection from './components/kids-module/GameSelection';
+import Game from './components/kids-module/Game';
+import GameTwo from './components/kids-module/GameTwo';
 
 // --- RENDER PROP AUTH GUARD ---
 // Safely manages state and injects the session down to the router
@@ -23,6 +30,14 @@ const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<any>(null);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
+
+  // Also read from Zustand — Onboarding.tsx sets this to true immediately before
+  // navigate(), so we don't have to wait for an async DB re-check.
+  const storeOnboardingComplete = useCognitiveStore(s => s.onboardingComplete);
+  const setStoreOnboardingComplete = useCognitiveStore(s => s.setOnboardingComplete);
+
+  // The effective gate: pass if EITHER source says complete
+  const isOnboardingComplete = onboardingComplete || storeOnboardingComplete;
 
   const checkAuthAndProfile = useCallback(async (currentSession: any) => {
     if (!currentSession) {
@@ -49,12 +64,14 @@ const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
 
       const isComplete = profile?.cognitive_profile && Object.keys(profile.cognitive_profile).length > 0;
       setOnboardingComplete(!!isComplete);
+      // Sync to Zustand so the flag persists across navigations without re-fetching
+      setStoreOnboardingComplete(!!isComplete);
     } catch (error) {
       console.error("[AuthGuard] Profile check failed:", error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setStoreOnboardingComplete]);
 
   useEffect(() => {
     // Initial Load
@@ -91,8 +108,8 @@ const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     );
   }
 
-  // Pass state safely to children
-  return <>{children(session, onboardingComplete)}</>;
+  // Pass state safely to children — use the merged flag
+  return <>{children(session, isOnboardingComplete)}</>;
 };
 
 // --- MAIN ROUTER ---
@@ -131,7 +148,31 @@ export default function App() {
             <Route path="/manager" element={
               session ? <ManagerDashboard /> : <Navigate to="/auth" replace />
             } />
-            
+
+            {/* ── Kids Module Routes ────────────────────────────────────────── */}
+            {/* These routes require authentication but NOT onboarding completion */}
+            {/* so a parent/teacher/child can access them immediately after login. */}
+
+            <Route path="/kids/parent" element={
+              session ? <ParentDashboard /> : <Navigate to="/auth" replace />
+            } />
+
+            <Route path="/kids/teacher" element={
+              session ? <TeacherDashboard /> : <Navigate to="/auth" replace />
+            } />
+
+            <Route path="/kids/games" element={
+              session ? <GameSelection /> : <Navigate to="/auth" replace />
+            } />
+
+            <Route path="/kids/play/1" element={
+              session ? <Game /> : <Navigate to="/auth" replace />
+            } />
+
+            <Route path="/kids/play/2" element={
+              session ? <GameTwo /> : <Navigate to="/auth" replace />
+            } />
+
             {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

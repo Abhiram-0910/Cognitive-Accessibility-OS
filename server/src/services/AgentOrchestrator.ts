@@ -21,7 +21,7 @@ export class AgentOrchestrator {
   
   // LangChain Setup with built-in Exponential Backoff for 429 Rate Limits
   private llm = new ChatGoogleGenerativeAI({
-    model: 'gemini-1.5-flash', // Correct key for @langchain/google-genai
+    model: 'gemini-2.0-flash', // Correct key for @langchain/google-genai
     maxRetries: 3, // Automatically retries with exponential backoff if rate limited
     temperature: 0.2,
   });

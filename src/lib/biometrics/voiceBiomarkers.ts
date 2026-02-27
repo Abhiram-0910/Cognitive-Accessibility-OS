@@ -75,7 +75,7 @@ export class VoiceBiomarkerEngine {
 
   private calculateEnergyAndEmit(dataArray: Uint8Array, wpm: number, onTick: Function) {
     if (!this.analyser || !this.isRunning) return;
-    this.analyser.getByteTimeDomainData(dataArray as unknown as Uint8Array);
+    this.analyser.getByteTimeDomainData(dataArray as any);
     let sumSquares = 0;
     for (let i = 0; i < dataArray.length; i++) {
       const normalized = (dataArray[i] / 128.0) - 1.0;

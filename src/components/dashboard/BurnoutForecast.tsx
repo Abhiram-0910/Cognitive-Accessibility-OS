@@ -60,7 +60,7 @@ export const BurnoutForecast: React.FC = () => {
         )}
       </div>
 
-      <div className="h-48 w-full mt-4">
+      <div style={{ width: '100%', height: '200px', minHeight: '200px' }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={forecastData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
             <XAxis 

@@ -17,13 +17,18 @@ interface CognitiveState {
   metrics: CognitiveMetrics;
   cognitiveLoadScore: number;
   classification: CognitiveClassification;
-  permissionsGranted: boolean; // <--- NEW STATE
+  permissionsGranted: boolean;
+  // ── Onboarding gate ──────────────────────────────────────────────────────
+  // Stored in Zustand so Onboarding.tsx can set it to true immediately before
+  // navigate(), bypassing the async AuthGuard re-check race condition.
+  onboardingComplete: boolean;
   updateMetrics: (
     metrics: Partial<CognitiveMetrics>,
     score: number,
     classification: CognitiveClassification
   ) => void;
-  setPermissionsGranted: (granted: boolean) => void; // <--- NEW ACTION
+  setPermissionsGranted: (granted: boolean) => void;
+  setOnboardingComplete: (complete: boolean) => void;
 }
 
 export const useCognitiveStore = create<CognitiveState>((set) => ({
@@ -39,7 +44,8 @@ export const useCognitiveStore = create<CognitiveState>((set) => ({
   },
   cognitiveLoadScore: 0,
   classification: 'normal',
-  permissionsGranted: false, // Default to false (Zero-Trust)
+  permissionsGranted: false,
+  onboardingComplete: false,
   updateMetrics: (newMetrics, score, classification) =>
     set((state) => ({
       metrics: { ...state.metrics, ...newMetrics },
@@ -47,4 +53,5 @@ export const useCognitiveStore = create<CognitiveState>((set) => ({
       classification,
     })),
   setPermissionsGranted: (granted) => set({ permissionsGranted: granted }),
+  setOnboardingComplete: (complete) => set({ onboardingComplete: complete }),
 }));

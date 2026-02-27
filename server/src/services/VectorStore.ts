@@ -44,7 +44,7 @@ export class VectorStore {
     const key = this.generateCacheKey(prompt, context);
     try {
       const cached = await this.redis.get(key);
-      return cached ? JSON.parse(cached) : null;
+      return cached ? JSON.parse(cached as string) : null;
     } catch (error) {
       console.error('[Redis] Cache read failed', error);
       return null;
