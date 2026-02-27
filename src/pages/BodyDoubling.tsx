@@ -230,16 +230,15 @@ export const BodyDoubling: React.FC = () => {
           width: '100%',
           height: '100%',
           configOverwrite: {
-            startWithAudioMuted: true,  // Zero-pressure: mic muted by default
-            startWithVideoMuted: false, // Camera on for body doubling accountability
-            prejoinPageEnabled: false,  // Skip Jitsi's own prejoin screen
+            startWithAudioMuted: true,  
+            startWithVideoMuted: false, 
+            prejoinPageEnabled: false, 
             disableDeepLinking: true,
             hideConferenceSubject: false,
             subject: `🧠 NeuroAdaptive Focus — ${currentTaskCategory}`,
-            // Minimal toolbar for distraction-free experience
+            // Absolute WebRTC Silence Enforcement: Mic button removed
             toolbarButtons: [
-              'camera', 'microphone', 'hangup', 'fullscreen',
-              'tileview',
+              'camera', 'hangup', 'fullscreen', 'tileview', 'chat', 'settings'
             ],
           },
           interfaceConfigOverwrite: {
@@ -257,6 +256,21 @@ export const BodyDoubling: React.FC = () => {
         });
 
         jitsiApiRef.current = api;
+
+        api.addEventListeners({
+          videoConferenceJoined: () => {
+            console.log('[BodyDoubling] Joined room. Enforcement active.');
+            // Double-check mute status on entry
+            api.executeCommand('muteEveryone', 'audio');
+          },
+          audioMuteStatusChanged: (payload: { muted: boolean }) => {
+            if (!payload.muted) {
+              console.warn('[BodyDoubling] Silence Violation: Microphone UNMUTED. Re-muting via protocol.');
+              api.executeCommand('toggleAudio');
+              // Optional: fire a local notification or sound for the violator
+            }
+          },
+        });
 
         // Auto-disconnect listener
         api.addListener('readyToClose', () => {

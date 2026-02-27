@@ -274,22 +274,92 @@ function resetButton(btn) {
 /**
  * Show the decomposed micro-tasks as an inline card below the button.
  */
+/**
+ * Show the decomposed micro-tasks and formatted text as an isolated 
+ * Shadow DOM overlay. This prevents Slack/Jira React re-renders from
+ * blowing away our UI or causing flicker.
+ */
 function showDecomposeResults(steps, anchorBtn) {
-  // Remove previous results
+  // 1. Remove previous results
   const prev = document.getElementById(NEUROADAPT_RESULT_ID);
   if (prev) prev.remove();
 
+  // 2. Create the host element for the Shadow DOM
+  const host = document.createElement('div');
+  host.id = NEUROADAPT_RESULT_ID;
+  host.className = 'neuro-shadow-host';
+  // Use absolute positioning to float OVER the app
+  host.style.position = 'absolute';
+  host.style.zIndex = '2147483647';
+  host.style.pointerEvents = 'none'; // Click-through by default
+
+  // 3. Attach the Shadow Root
+  const shadow = host.attachShadow({ mode: 'open' });
+
+  // 4. Inject encapsulated CSS
+  const styles = document.createElement('style');
+  styles.textContent = `
+    .neuro-results-card {
+      background: #0F172A;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      padding: 16px;
+      width: 380px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      color: white;
+      font-family: 'Inter', sans-serif;
+      pointer-events: auto; /* Enable interaction inside the card */
+      backdrop-filter: blur(8px);
+    }
+    .neuro-results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      font-weight: bold;
+      color: #FACC15;
+    }
+    .neuro-results-close {
+      background: transparent;
+      border: none;
+      color: white;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .neuro-results-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .neuro-results-step {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .neuro-step-number {
+      color: #FACC15;
+      font-weight: bold;
+    }
+    /* Lexical Anchor Formatting (Ocular Centering) */
+    .lexical-anchor strong {
+      color: #FACC15;
+      font-weight: 900;
+    }
+  `;
+  shadow.appendChild(styles);
+
+  // 5. Build the Card UI
   const container = document.createElement('div');
-  container.id = NEUROADAPT_RESULT_ID;
   container.className = 'neuro-results-card';
 
   const header = document.createElement('div');
   header.className = 'neuro-results-header';
   header.innerHTML = `
-    <span>🧠 NeuroAdaptive Micro-Tasks</span>
+    <span>🧠 NeuroAdaptive Results</span>
     <button class="neuro-results-close" title="Close">✕</button>
   `;
-  header.querySelector('.neuro-results-close').addEventListener('click', () => container.remove());
+  header.querySelector('.neuro-results-close').addEventListener('click', () => host.remove());
   container.appendChild(header);
 
   const list = document.createElement('ol');
@@ -298,8 +368,7 @@ function showDecomposeResults(steps, anchorBtn) {
   steps.forEach((step, i) => {
     const li = document.createElement('li');
     li.className = 'neuro-results-step';
-
-    const title = typeof step === 'string' ? step : (step.title || step.description || step.step || JSON.stringify(step));
+    const title = typeof step === 'string' ? step : (step.title || step.description || step.step || '');
     const duration = typeof step === 'object' && step.duration ? ` (${step.duration})` : '';
 
     li.innerHTML = `
@@ -308,13 +377,43 @@ function showDecomposeResults(steps, anchorBtn) {
     `;
     list.appendChild(li);
   });
-
   container.appendChild(list);
 
-  // Insert after the button
-  if (anchorBtn.parentNode) {
-    anchorBtn.parentNode.insertBefore(container, anchorBtn.nextSibling);
-  }
+  shadow.appendChild(container);
+
+  // 6. Append host to body (not the Jira/Slack message div)
+  document.body.appendChild(host);
+
+  // 7. Isolation Logic: ResizeObserver to stay pinned to anchorBtn
+  const updatePosition = () => {
+    const rect = anchorBtn.getBoundingClientRect();
+    host.style.top = `${window.scrollY + rect.top + rect.height + 8}px`;
+    host.style.left = `${window.scrollX + rect.left}px`;
+  };
+
+  const observer = new ResizeObserver(() => updatePosition());
+  observer.observe(document.body); // Watch body for layout shifts
+  observer.observe(anchorBtn);     // Watch anchor itself
+  
+  // Also update on scroll
+  window.addEventListener('scroll', updatePosition, { passive: true });
+  
+  // Initial position
+  updatePosition();
+
+  // Cleanup observer when host removed
+  const cleanup = new MutationObserver((mutations) => {
+    mutations.forEach((m) => {
+      m.removedNodes.forEach((node) => {
+        if (node === host) {
+          observer.disconnect();
+          window.removeEventListener('scroll', updatePosition);
+          cleanup.disconnect();
+        }
+      });
+    });
+  });
+  cleanup.observe(document.body, { childList: true });
 }
 
 

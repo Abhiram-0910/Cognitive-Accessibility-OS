@@ -179,6 +179,7 @@ export default function Game() {
   // Track distress duration — ref to avoid stale closure inside rAF
   const distressStartRef = useRef<number | null>(null);
   const interventionLoggedRef = useRef(false);
+  const gameStateRef = useRef<'idle' | 'wrong_answer_streak' | 'correct_answer_streak'>('idle');
 
   // Singleton engine ref
   const visionEngineRef = useRef<BiometricVisionEngine | null>(null);
@@ -267,6 +268,17 @@ export default function Game() {
   }, [stopWebcam]);
 
   const startCapture = () => {
+    const isTouch = navigator.maxTouchPoints > 0;
+    
+    // Log hardware context to telemetry
+    supabase.from('telemetry_events').insert({
+      event_type: 'game_start',
+      metadata: { 
+        isTouchDevice: isTouch,
+        userAgent: navigator.userAgent
+      },
+    }).catch(err => console.warn('[Game] Telemetry log failed:', err));
+
     const shuffled = [...questions].sort(() => Math.random() - 0.5);
     setQuestions(shuffled);
     setCurrentIdx(0);
@@ -304,12 +316,15 @@ export default function Game() {
     // ── Update Heuristic Context ──────────────────────────────────────────
     if (visionEngineRef.current) {
       if (correct) {
-        visionEngineRef.current.setGameState('correct_answer_streak');
+        gameStateRef.current = 'correct_answer_streak';
       } else {
-        visionEngineRef.current.setGameState('wrong_answer_streak');
+        gameStateRef.current = 'wrong_answer_streak';
       }
+      visionEngineRef.current.setGameState(gameStateRef.current);
+      
       // Reset to idle after a delay
       setTimeout(() => {
+        gameStateRef.current = 'idle';
         visionEngineRef.current?.setGameState('idle');
       }, 3000);
     }

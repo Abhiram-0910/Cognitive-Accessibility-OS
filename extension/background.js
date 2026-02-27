@@ -10,6 +10,19 @@
 
 const BACKEND_URL = 'http://localhost:3000';
 
+// ─── 0. Heartbeat (MV3 Keep-Alive) ──────────────────────────────────────────
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('[NeuroAdaptive BG] Extension installed/updated. Initializing heartbeat.');
+  chrome.alarms.create('neuro-heartbeat', { periodInMinutes: 0.5 });
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'neuro-heartbeat') {
+    // Keep-alive activity: log a light debug message
+    console.debug('[NeuroAdaptive BG] 💓 Heartbeat active - ' + new Date().toLocaleTimeString());
+  }
+});
+
 // ─── 1. Handle messages from content scripts ────────────────────────────────
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

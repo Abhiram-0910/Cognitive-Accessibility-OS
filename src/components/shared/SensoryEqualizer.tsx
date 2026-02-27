@@ -13,12 +13,17 @@ import { useCognitiveStore } from '../../stores/cognitiveStore';
 
 export const SensoryEqualizer: React.FC = () => {
   const [isOpen, setIsOpen] = React.useState(false);
+  const [calibrationStep, setCalibrationStep] = React.useState<'idle' | 'testing' | 'prompt'>('idle');
+  const [showHelper, setShowHelper] = React.useState(false);
   const { 
     audioSettings, 
     updateAudioSettings, 
-    isAudioDucked, 
-    isHardwareMuted 
+    isAudioDucked,
   } = useCognitiveStore();
+
+  const [isCalibrated, setIsCalibrated] = React.useState(() => {
+    return localStorage.getItem('neuroadapt_calibration_completed') === 'true';
+  });
 
   const handleToggleMute = () => {
     updateAudioSettings({ isMuted: !audioSettings.isMuted });
@@ -26,6 +31,33 @@ export const SensoryEqualizer: React.FC = () => {
 
   const handleSliderChange = (key: keyof typeof audioSettings, value: string) => {
     updateAudioSettings({ [key]: parseFloat(value) });
+  };
+
+  const runCalibration = () => {
+    setCalibrationStep('testing');
+    setShowHelper(false);
+    
+    const audio = new Audio('https://cdn.freesound.org/previews/339/339822_5121236-lq.mp3'); // Gentle bell
+    audio.volume = 1.0;
+    
+    audio.play().then(() => {
+      setTimeout(() => setCalibrationStep('prompt'), 1500);
+    }).catch(() => {
+      // AudioContext might be blocked
+      setCalibrationStep('idle');
+      alert('Please click anywhere on the page first to enable audio.');
+    });
+  };
+
+  const confirmCalibration = (heard: boolean) => {
+    if (heard) {
+      setIsCalibrated(true);
+      localStorage.setItem('neuroadapt_calibration_completed', 'true');
+      setCalibrationStep('idle');
+    } else {
+      setShowHelper(true);
+      setCalibrationStep('idle');
+    }
   };
 
   return (
@@ -51,10 +83,61 @@ export const SensoryEqualizer: React.FC = () => {
               </button>
             </div>
 
-            {isHardwareMuted && (
-              <div className="mb-4 p-3 bg-rose-500/20 border border-rose-500/30 rounded-xl flex items-center gap-3 animate-pulse">
-                <AlertTriangle className="w-4 h-4 text-rose-400" />
-                <p className="text-[10px] text-rose-200 font-medium">OS Hardware Mute Detected</p>
+            {/* Calibration Status */}
+            {!isCalibrated && calibrationStep === 'idle' && !showHelper && (
+              <div className="mb-6 p-3 bg-indigo-500/20 border border-indigo-500/30 rounded-xl">
+                <p className="text-[10px] text-indigo-200 font-medium mb-3">Audio environment not calibrated.</p>
+                <button 
+                  onClick={runCalibration}
+                  className="w-full py-2 bg-indigo-500 hover:bg-indigo-600 rounded-lg text-xs font-bold transition-all"
+                >
+                  Calibrate Environment
+                </button>
+              </div>
+            )}
+
+            {calibrationStep === 'testing' && (
+              <div className="mb-6 p-4 bg-white/5 border border-white/10 rounded-xl flex flex-col items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-indigo-400 animate-ping" />
+                <p className="text-[10px] text-indigo-200 animate-pulse font-bold uppercase tracking-widest">Playing Chime...</p>
+              </div>
+            )}
+
+            {calibrationStep === 'prompt' && (
+              <div className="mb-6 p-4 bg-white/5 border border-white/10 rounded-xl text-center">
+                <p className="text-xs font-bold mb-4">Did you hear the bell?</p>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => confirmCalibration(true)}
+                    className="flex-1 py-2 bg-emerald-500/20 hover:bg-emerald-500/40 border border-emerald-500/30 rounded-lg text-xs font-bold text-emerald-300"
+                  >
+                    Yes
+                  </button>
+                  <button 
+                    onClick={() => confirmCalibration(false)}
+                    className="flex-1 py-2 bg-rose-500/20 hover:bg-rose-500/40 border border-rose-500/30 rounded-lg text-xs font-bold text-rose-300"
+                  >
+                    No
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {showHelper && (
+              <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl">
+                <div className="flex items-center gap-2 mb-2 text-rose-400">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span className="text-[10px] font-black uppercase tracking-wider">Audio Blocked</span>
+                </div>
+                <p className="text-[10px] text-rose-200/70 leading-relaxed mb-3">
+                  Check your physical volume keys or OS master output. Ensure browser tab isn't muted.
+                </p>
+                <button 
+                  onClick={runCalibration}
+                  className="w-full py-2 bg-rose-500/20 hover:bg-rose-500/40 rounded-lg text-[10px] font-bold transition-all"
+                >
+                  Try Again
+                </button>
               </div>
             )}
 

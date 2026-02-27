@@ -163,6 +163,16 @@ VITE_BACKEND_URL=http://localhost:3000
 2. **Kids Module Tables**: Execute `supabase/merge_kids_module.sql` for the game session and child profile tables.
 3. **Storage Bucket**: In the Supabase Dashboard, navigate to **Storage → Create Bucket** and create a bucket named `kids-captures` (set to **Private**). Then run `supabase/fix_storage_bucket.sql` to apply RLS policies allowing authenticated uploads.
 
+4. **Storage Cleanup (Edge Function)**: The physical deletion of expired captures is handled by a Supabase Edge Function. To trigger this daily in production, use the Supabase Cron (`pg_net`) via SQL:
+   ```sql
+   select cron.schedule('storage-cleanup-daily', '0 0 * * *', $$
+     select net.http_post(
+       url:='https://your-project-ref.supabase.co/functions/v1/storage-cleaner',
+       headers:=jsonb_build_object('Content-Type', 'application/json', 'Authorization', 'Bearer your-service-role-key')
+     ) as request_id;
+   $$);
+   ```
+
 ### 3. Booting the Infrastructure
 
 **Start the backend orchestration layer:**

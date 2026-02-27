@@ -5,55 +5,95 @@ import { MicroTask } from '../../agents/taskAgent';
  * Parses tasks and integrations into structured formats without using the LLM.
  */
 
-export function chunkTaskLocally(taskDescription: string, estimatedTimeMinutes: number): MicroTask[] {
-  // Regex to split on newlines or sentence boundaries (periods followed by space)
-  const lines = taskDescription
-    .split(/\n|(?:\.\s+)/)
-    .map(t => t.trim().replace(/^[-*•\d.)]+\s*/, '')) // Strip bullets/numbers
-    .filter(t => t.length > 5);
+const STOPWORDS = new Set(['a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 'to', 'was', 'were', 'will', 'with']);
 
-  if (lines.length > 0 && lines.length <= 10) {
-    return lines.slice(0, 7).map((line, i) => ({
-      id: `local-${Date.now()}-${i}`,
-      step: `⚡ [Offline] ${line.substring(0, 100)}`,
-      estimated_minutes: Math.max(1, Math.floor(estimatedTimeMinutes / lines.length)),
-      friction_point: 'Basic Formatting',
-    }));
-  }
-
-  // Fallback: If it's a giant wall of text with no clear sentences
-  return [
-    {
-      id: `local-${Date.now()}-0`,
-      step: `⚡ [Offline Mode] Basic Formatting: Read the first paragraph.`,
-      estimated_minutes: 5,
-      friction_point: 'Text Wall',
-    },
-    {
-      id: `local-${Date.now()}-1`,
-      step: `⚡ [Offline Mode] Try chunking the rest manually.`,
-      estimated_minutes: estimatedTimeMinutes > 5 ? estimatedTimeMinutes - 5 : 5,
-      friction_point: 'Network Offline',
-    }
-  ];
+function tokenize(text: string): string[] {
+  return text.toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .split(/\s+/)
+    .filter(word => word.length > 2 && !STOPWORDS.has(word));
 }
 
-export function simplifyNotificationLocally(rawContent: string): string {
-  // Simple heuristic: extract the first sentence, and any sentence indicating action.
-  const sentences = rawContent.split(/(?<=[.!?])\s+/);
-  if (sentences.length === 0 || !rawContent) return "⚡ [Offline Mode] No content.";
+/**
+ * Lexical Anchor Formatting
+ * Wraps the first half of words in <strong> tags for visual anchoring.
+ */
+function applyLexicalAnchorFormatting(text: string): string {
+  return text.split(/(\s+)/).map(part => {
+    if (part.length <= 1 || part.match(/^\s+$/) || part.includes('```')) return part;
+    const mid = Math.ceil(part.length / 2);
+    const start = part.substring(0, mid);
+    const end = part.substring(mid);
+    return `<strong>${start}</strong>${end}`;
+  }).join('');
+}
 
-  const bullets: string[] = [];
-  
-  // Who/What (First sentence usually is the context)
-  bullets.push(`⚡ [Offline Mode] ${sentences[0]}`);
+export type NLPResult = {
+  content: string | string[];
+  type: 'summary' | 'lexical_anchor';
+};
 
-  // Need/Action (Look for urgency keywords in subsequent sentences)
-  const actionObj = sentences.slice(1).find(s => /(urgent|need|please|asap|deadline|block|fail|action|fix)/i.test(s));
+export function summarizeTextLocally(text: string, sentenceCount: number = 3): NLPResult {
+  if (!text) return { content: [], type: 'summary' };
   
-  if (actionObj) {
-    bullets.push(`- Action: ${actionObj}`);
+  const wordCount = text.split(/\s+/).length;
+  
+  // ── Ambiguity 1: Micro-Text Bionic Fallback ─────────────────────────────
+  if (wordCount < 30) {
+    return {
+      content: applyLexicalAnchorFormatting(text),
+      type: 'lexical_anchor'
+    };
   }
 
-  return bullets.join('\n');
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+  if (sentences.length <= sentenceCount) {
+    return { 
+      content: sentences.map(s => s.trim()), 
+      type: 'summary' 
+    };
+  }
+
+  // 1. Calculate Term Frequency (TF)
+  const tf: Record<string, number> = {};
+  const tokens = tokenize(text);
+  tokens.forEach(t => tf[t] = (tf[t] || 0) + 1);
+
+  // 2. Score sentences
+  const sentenceScores = sentences.map(sentence => {
+    const sTokens = tokenize(sentence);
+    const score = sTokens.reduce((acc, token) => acc + (tf[token] || 0), 0);
+    return { sentence: sentence.trim(), score };
+  });
+
+  // 3. Extract top sentences
+  const result = sentenceScores
+    .sort((a, b) => b.score - a.score)
+    .slice(0, sentenceCount)
+    .sort((a, b) => text.indexOf(a.sentence) - text.indexOf(b.sentence))
+    .map(s => `• ${s.sentence}`);
+
+  return { content: result, type: 'summary' };
+}
+
+export function chunkTaskLocally(description: string, estimatedTimeMinutes: number): MicroTask[] {
+  const result = summarizeTextLocally(description, 5);
+  const chunks = Array.isArray(result.content) ? result.content : [result.content];
+  
+  return chunks.map((line, i) => ({
+    id: `local-${Date.now()}-${i}`,
+    step: line.startsWith('• ') ? line.replace('• ', '⚡ ') : `📖 [Ocular Centering] ${line.substring(0, 50)}...`,
+    estimated_minutes: Math.max(1, Math.floor(estimatedTimeMinutes / chunks.length)),
+    friction_point: result.type === 'lexical_anchor' ? 'Short Task Rendering' : 'Summarized Task',
+  }));
+}
+
+export function simplifyNotificationLocally(message: string): string {
+  const result = summarizeTextLocally(message, 1);
+  if (result.type === 'lexical_anchor') {
+    // Strip tags for simple text notifications
+    return (result.content as string).replace(/<\/?strong>/g, '');
+  }
+  const content = result.content as string[];
+  return content.length > 0 ? content[0].replace('• ', '⚡ ') : message;
 }

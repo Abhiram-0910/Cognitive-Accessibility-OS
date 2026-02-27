@@ -14,41 +14,78 @@ export class HeuristicTracker {
   private baselineJoy = 0;
   private samples = 0;
   private currentGameState: string = 'idle';
+  private lastComputeTime = 0;
+  private cachedMetrics: EmotionMetrics | null = null;
 
   private mouseMoveListener: ((e: MouseEvent) => void);
   private clickListener: ((e: MouseEvent) => void);
+  private touchStartListener: ((e: TouchEvent) => void);
+  private touchMoveListener: ((e: TouchEvent) => void);
+  private isTouchDevice: boolean;
 
   constructor() {
+    this.isTouchDevice = navigator.maxTouchPoints > 0;
+
     this.mouseMoveListener = (e: MouseEvent) => {
-      const now = performance.now();
-      if (this.lastMouseTime > 0) {
-        const dx = e.clientX - this.lastMousePos.x;
-        const dy = e.clientY - this.lastMousePos.y;
-        const dt = now - this.lastMouseTime;
-        
-        if (dt > 0) {
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          const v = distance / dt; // px per ms
-          this.mouseVelocity = (this.mouseVelocity * 0.8) + (v * 0.2);
-        }
-      }
-      this.lastMousePos = { x: e.clientX, y: e.clientY };
-      this.lastMouseTime = now;
+      this.handlePointerMove(e.clientX, e.clientY);
     };
 
     this.clickListener = () => {
-      const now = performance.now();
-      this.clickTimestamps.push(now);
-      // Keep only clicks from the last 5 seconds
-      this.clickTimestamps = this.clickTimestamps.filter(t => now - t < 5000);
+      this.handlePointerClick();
+    };
+
+    this.touchStartListener = (e: TouchEvent) => {
+      if (e.touches[0]) {
+        this.handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+        this.handlePointerClick(); // Touch start counts as a click/tap
+      }
+    };
+
+    this.touchMoveListener = (e: TouchEvent) => {
+      if (e.touches[0]) {
+        this.handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
     };
 
     window.addEventListener('mousemove', this.mouseMoveListener);
     window.addEventListener('mousedown', this.clickListener);
+    window.addEventListener('touchstart', this.touchStartListener, { passive: true });
+    window.addEventListener('touchmove', this.touchMoveListener, { passive: true });
+  }
+
+  private handlePointerMove(x: number, y: number) {
+    const now = performance.now();
+    if (this.lastMouseTime > 0) {
+      const dx = (x || 0) - this.lastMousePos.x;
+      const dy = (y || 0) - this.lastMousePos.y;
+      const dt = now - this.lastMouseTime;
+      
+      if (dt > 0) {
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const v = distance / dt; // px per ms
+        this.mouseVelocity = (this.mouseVelocity * 0.8) + (v * 0.2);
+      }
+    }
+    this.lastMousePos = { x: x || 0, y: y || 0 };
+    this.lastMouseTime = now;
+  }
+
+  private handlePointerClick() {
+    const now = performance.now();
+    this.clickTimestamps.push(now);
+    this.clickTimestamps = this.clickTimestamps.filter(t => now - t < 5000);
   }
 
   public getMetrics(): EmotionMetrics {
     const now = performance.now();
+    
+    // ── Ambiguity 2: Anti-Thrashing Heuristic Refs ──────────────────────────
+    // Only recalculate heavy sentiment scores if throttle interval (500ms) has passed
+    if (this.cachedMetrics && (now - this.lastComputeTime < 500)) {
+      return this.cachedMetrics;
+    }
+
+    this.lastComputeTime = now;
     
     // Decay velocity if mouse stops
     if (now - this.lastMouseTime > 100) {
@@ -74,8 +111,9 @@ export class HeuristicTracker {
     } else if (this.currentGameState === 'correct_answer_streak') {
       joy = clamp100(joy * 1.4); // Reward fast correct streaks
       frustration = 0;
-    } else if (this.currentGameState === 'idle') {
-      // Track Dwell Time / Ruminative hover instead of direct velocity
+    } else if (this.currentGameState === 'idle' && !this.isTouchDevice) {
+      // ── Ambiguity 1: Tablet Bypass ─────────────────────────────────────
+      // Tablets have no hover/dwell state; bypass this logic for touch devices.
       if (v < 0.5 && now - this.lastMouseTime < 2000) {
         frustration = clamp100((now - this.lastMouseTime) / 100); 
       }
@@ -97,7 +135,7 @@ export class HeuristicTracker {
     const pseudoGazeWander = clamp100(v * 15);
     const pseudoTension = clamp100(v * 8);
 
-    return {
+    this.cachedMetrics = {
       tension: pseudoTension,
       gazeWander: pseudoGazeWander,
       joy,
@@ -105,6 +143,8 @@ export class HeuristicTracker {
       confusion: 0,
       isHeuristic: true,
     };
+
+    return this.cachedMetrics;
   }
 
   public setGameState(state: string) {
@@ -114,5 +154,7 @@ export class HeuristicTracker {
   public destroy() {
     window.removeEventListener('mousemove', this.mouseMoveListener);
     window.removeEventListener('mousedown', this.clickListener);
+    window.removeEventListener('touchstart', this.touchStartListener);
+    window.removeEventListener('touchmove', this.touchMoveListener);
   }
 }
