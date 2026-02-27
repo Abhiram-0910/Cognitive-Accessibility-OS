@@ -363,14 +363,16 @@ export default function Game() {
 
   // Colour for the emotion indicator pill
   const emotionPillColour =
-    emotions.frustration >= 80 || emotions.confusion >= 80
+    emotions.isCalibrating ? 'bg-slate-500/80 text-white animate-pulse'
+    : emotions.frustration >= 80 || emotions.confusion >= 80
       ? 'bg-rose-500/80 text-white'
       : emotions.joy >= 50
       ? 'bg-emerald-500/80 text-white'
       : 'bg-white/10 text-white/60';
 
   const dominantEmotion =
-    emotions.frustration >= 80 ? '😤 Frustrated'
+    emotions.isCalibrating ? '⌛ Calibrating...'
+    : emotions.frustration >= 80 ? '😤 Frustrated'
     : emotions.confusion >= 80 ? '🤔 Confused'
     : emotions.joy >= 50 ? '😊 Happy'
     : '😐 Neutral';

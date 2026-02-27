@@ -16,6 +16,10 @@ export class HeuristicTracker {
   private currentGameState: string = 'idle';
   private lastComputeTime = 0;
   private cachedMetrics: EmotionMetrics | null = null;
+  
+  private startTime = 0;
+  public isCalibrating = true;
+  private calibrationSamples: { f: number; j: number }[] = [];
 
   private mouseMoveListener: ((e: MouseEvent) => void);
   private clickListener: ((e: MouseEvent) => void);
@@ -25,6 +29,7 @@ export class HeuristicTracker {
 
   constructor() {
     this.isTouchDevice = navigator.maxTouchPoints > 0;
+    this.startTime = performance.now();
 
     this.mouseMoveListener = (e: MouseEvent) => {
       this.handlePointerMove(e.clientX, e.clientY);
@@ -103,6 +108,31 @@ export class HeuristicTracker {
     
     // Fast, smooth interactions (high velocity, few clicks = swift decisive action) map to Joy
     let joy = (v > 1 && recentClicks <= 2) ? clamp100(v * 8) : 0;
+
+    // ── Phase 36: Dynamic 10s Calibration Phase ────────────────────────────
+    const isCalibratingNow = now - this.startTime < 10000;
+    this.isCalibrating = isCalibratingNow;
+
+    if (isCalibratingNow) {
+      if (!isNaN(frustration) && !isNaN(joy)) {
+        this.calibrationSamples.push({ f: frustration, j: joy });
+      }
+      this.cachedMetrics = {
+        tension: 0,
+        gazeWander: 0,
+        joy: 0,
+        frustration: 0,
+        confusion: 0,
+        isHeuristic: true,
+        isCalibrating: true,
+      };
+      return this.cachedMetrics;
+    } else if (this.calibrationSamples.length > 0) {
+      this.baselineFrustration = this.calibrationSamples.reduce((acc, s) => acc + s.f, 0);
+      this.baselineJoy = this.calibrationSamples.reduce((acc, s) => acc + s.j, 0);
+      this.samples = this.calibrationSamples.length;
+      this.calibrationSamples = [];
+    }
 
     // ── Contextual Context Layer ───────────────────────────────────────────
     if (this.currentGameState === 'wrong_answer_streak') {

@@ -1,6 +1,5 @@
 /**
  * ParentDashboard — Kids Module
- * Ported from: _legacy_repo_to_port/Frontend/src/components/ManageChildAccounts.js
  *
  * Functional parity checklist — ALL features preserved:
  * ✅ fetchChildAccounts on mount via parent_id (Supabase auth)

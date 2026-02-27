@@ -13,6 +13,10 @@ import { BodyDoubling } from './pages/BodyDoubling';
 import { ManagerDashboard } from './pages/ManagerDashboard';
 import { CrisisMode } from './components/crisis/CrisisMode';
 import { Unauthorized } from './pages/Unauthorized';
+// Stage B: External Repo Integrations
+import { AcousticSandbox } from './components/acoustic/AcousticSandbox';
+import { RSDShield } from './components/rsd/RSDShield';
+import { ReadingMode } from './components/reading/ReadingMode';
 
 // Kids Module
 import ParentDashboard from './pages/ParentDashboard';
@@ -185,6 +189,31 @@ export default function App() {
   const setOfflineMode = useCognitiveStore((state) => state.setOfflineMode);
   const setGlobalAudioContext = useCognitiveStore((state) => state.setGlobalAudioContext);
   const setHardwareMuted = useCognitiveStore((state) => state.setHardwareMuted);
+  const juggleAudioContext = useCognitiveStore((state) => state.juggleAudioContext);
+
+  // Audio Context Keep-Alive (Juggler)
+  useEffect(() => {
+    let lastJuggle = 0;
+    const JUGGLE_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+    const handleJuggle = () => {
+      const now = Date.now();
+      if (now - lastJuggle >= JUGGLE_INTERVAL) {
+        lastJuggle = now;
+        juggleAudioContext();
+      }
+    };
+
+    document.addEventListener('click', handleJuggle, { passive: true });
+    document.addEventListener('keydown', handleJuggle, { passive: true });
+    document.addEventListener('touchstart', handleJuggle, { passive: true });
+
+    return () => {
+      document.removeEventListener('click', handleJuggle);
+      document.removeEventListener('keydown', handleJuggle);
+      document.removeEventListener('touchstart', handleJuggle);
+    };
+  }, [juggleAudioContext]);
 
   // Hardware mute detection implementation (approximate for browser)
   useEffect(() => {
@@ -300,6 +329,31 @@ export default function App() {
               session ? (
                 <RoleGuard userRole={userRole} allowed={['employee', 'admin']}>
                   {onboardingComplete ? <BodyDoubling /> : <Navigate to="/onboarding" replace />}
+                </RoleGuard>
+              ) : <Navigate to="/auth" replace />
+            } />
+
+            {/* ── Stage B: External Feature Routes ────────────────── */}
+            <Route path="/acoustic-sandbox" element={
+              session ? (
+                <RoleGuard userRole={userRole} allowed={['employee', 'admin']}>
+                  <AcousticSandbox />
+                </RoleGuard>
+              ) : <Navigate to="/auth" replace />
+            } />
+
+            <Route path="/rsd-shield" element={
+              session ? (
+                <RoleGuard userRole={userRole} allowed={['employee', 'admin']}>
+                  <RSDShield />
+                </RoleGuard>
+              ) : <Navigate to="/auth" replace />
+            } />
+
+            <Route path="/reading" element={
+              session ? (
+                <RoleGuard userRole={userRole} allowed={['employee', 'admin', 'child', 'parent']}>
+                  <ReadingMode />
                 </RoleGuard>
               ) : <Navigate to="/auth" replace />
             } />

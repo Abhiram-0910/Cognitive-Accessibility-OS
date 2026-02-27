@@ -17,8 +17,28 @@ function tokenize(text: string): string[] {
 /**
  * Lexical Anchor Formatting
  * Wraps the first half of words in <strong> tags for visual anchoring.
+ * Exported for use in ReadingMode component.
  */
-function applyLexicalAnchorFormatting(text: string): string {
+export function applyLexicalAnchorFormatting(text: string): string {
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
+    const segments = segmenter.segment(text);
+    let result = '';
+    for (const segment of segments) {
+      if (segment.isWordLike && segment.segment.length > 1 && !segment.segment.includes('```')) {
+        const part = segment.segment;
+        const mid = Math.ceil(part.length / 2);
+        const start = part.substring(0, mid);
+        const end = part.substring(mid);
+        result += `<strong>${start}</strong>${end}`;
+      } else {
+        result += segment.segment;
+      }
+    }
+    return result;
+  }
+
+  // Fallback for older environments
   return text.split(/(\s+)/).map(part => {
     if (part.length <= 1 || part.match(/^\s+$/) || part.includes('```')) return part;
     const mid = Math.ceil(part.length / 2);

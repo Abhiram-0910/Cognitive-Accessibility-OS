@@ -1,6 +1,5 @@
 /**
  * TimerBar — Kids Module
- * Ported from: _legacy_repo_to_port/Frontend/src/components/TimerBar.js
  *
  * A visual progress bar driven by a live countdown.
  * The bar changes colour as time runs out:

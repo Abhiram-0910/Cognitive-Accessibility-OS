@@ -1,7 +1,5 @@
 /**
  * GameTwo (Drag-&-Spell) — Kids Module
- * Ported from: _legacy_repo_to_port/Frontend/src/components/game_2.js
- * Renamed: game_2.js → GameTwo.tsx  (as instructed)
  *
  * Functional parity checklist — ALL features preserved:
  * ✅ webcam permission request

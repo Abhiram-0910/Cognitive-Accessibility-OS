@@ -1,8 +1,6 @@
 /**
  * useCapture  — Kids Module
  *
- * Ported from: _legacy_repo_to_port/Frontend/src/hooks/useCapture.js
- *
  * Captures frames from a live video element and DOM screenshots, then uploads
  * them to Supabase Storage for expression analysis.
  *

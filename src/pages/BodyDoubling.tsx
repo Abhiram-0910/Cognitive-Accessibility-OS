@@ -322,60 +322,243 @@ export const BodyDoubling: React.FC = () => {
 
   if (activeRoomId) {
     return (
-      <div className="min-h-screen bg-slate-900 p-4 md:p-8 font-sans flex flex-col animate-in fade-in zoom-in-95 duration-500">
-        <header className="mb-4 flex flex-col md:flex-row gap-4 justify-between md:items-center">
-          <div>
-            <h1 className="text-2xl font-semibold text-white flex items-center gap-3 tracking-tight">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-teal-500" />
-              </span>
-              {jitsiFailed ? 'Asynchronous Body Doubling' : 'Deep Work Session Active'}
-            </h1>
-            <div className="flex items-center gap-4 mt-1">
-              <p className="text-slate-400 text-sm font-mono">Room: {activeRoomId}</p>
-              <span className="text-xs font-bold px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 font-mono">
-                ⏱ {formatTime(sessionTimeLeft)} remaining
-              </span>
+      <div className="bg-[#f6f6f8] dark:bg-[#131122] text-slate-900 dark:text-slate-100 font-display min-h-screen flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-500">
+        
+        {/* Top Navigation */}
+        <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-[#272447] bg-[#131122]/95 backdrop-blur-sm px-6 py-3 shrink-0 z-20">
+          <div className="flex items-center gap-4 text-white">
+            <div className="size-8 flex items-center justify-center bg-[#2617cf]/20 rounded-lg text-[#2617cf]">
+              <span className="material-symbols-outlined text-2xl">grid_view</span>
             </div>
+            <h2 className="text-white text-lg font-bold leading-tight tracking-[-0.015em]">NeuroAdaptive OS</h2>
           </div>
-          <button
-            onClick={endSession}
-            className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2 shadow-lg"
-          >
-            <PhoneOff className="w-5 h-5" /> End Focus Block
-          </button>
+          <div className="flex flex-1 justify-end gap-6 items-center">
+            <div className="hidden md:flex items-center gap-8">
+              <a className="text-slate-300 hover:text-white transition-colors text-sm font-medium leading-normal flex items-center gap-2" href="#">
+                <span className="material-symbols-outlined text-[18px]">timer</span>
+                Focus Timer
+              </a>
+              <a className="text-slate-300 hover:text-white transition-colors text-sm font-medium leading-normal flex items-center gap-2" href="#">
+                <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                My Tasks
+              </a>
+              <a className="text-slate-300 hover:text-white transition-colors text-sm font-medium leading-normal flex items-center gap-2" href="#">
+                <span className="material-symbols-outlined text-[18px]">settings</span>
+                Settings
+              </a>
+            </div>
+            <div className="h-6 w-[1px] bg-[#272447] mx-2"></div>
+            <button className="flex min-w-[84px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-9 px-4 bg-[#2617cf] hover:bg-[#2617cf]/90 transition-colors text-white text-sm font-bold leading-normal tracking-[0.015em]">
+              <span className="truncate">Invite</span>
+            </button>
+            <div className="bg-center bg-no-repeat bg-cover rounded-full size-9 border border-[#272447] cursor-pointer" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuCSECxMzNu9GXd1xs6L0Bn3apxeDqa6E5RmbIQWIOghuDbIJ0v6DkAcdD--O5L8dY6pGqLcZyjLnT7l1rihJVAeKiESs_0BC-zDrMVmoVpCy0qUuXiIJ2ywA7v3-qwf6dVgRqTV7z84V4S0nCU49R-SosXUynQkmFXwvlhaHAm-k4KHUOMvO_Folrdmv6cqiQpZgIJOU-Pj7Kd0EvWFgiseSpq9FUyUK_rI53wpApCudsI45UkAseKcmXl9J3Ox6z4spq4YPYATNZE")' }}></div>
+          </div>
         </header>
 
-        {jitsiFailed ? (
-          <div className="flex-1 rounded-3xl border border-slate-700 bg-slate-800/50 flex flex-col items-center justify-center text-center p-8 shadow-2xl relative overflow-hidden">
-             {/* Subdued animated background elements */}
-             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/40 via-slate-900/10 to-transparent pointer-events-none" />
-             <div className="relative z-10 max-w-lg">
-               <Shield className="w-16 h-16 text-indigo-400 mx-auto mb-6 opacity-80" />
-               <h2 className="text-2xl font-semibold text-slate-200 mb-4">Enterprise Firewall Detected</h2>
-               <p className="text-slate-400 mb-8 leading-relaxed">
-                 Live video (WebRTC) is blocked on your current network. However, you are still anchored to the grid. 
-                 Work synchronously, knowing you aren't alone.
-               </p>
-               
-               <div className="bg-slate-900/80 border border-slate-700/50 rounded-2xl p-6 shadow-inner inline-flex flex-col items-center">
-                 <span className="text-5xl font-black text-indigo-400 mb-2 drop-shadow-[0_0_15px_rgba(129,140,248,0.5)]">
-                   {Math.max(1, onlineUsers.length)}
+        {/* Main Content Area */}
+        <main className="flex-1 flex overflow-hidden relative">
+          {/* Left: Video Grid / Jitsi Engine */}
+          <div className="flex-1 flex flex-col p-6 overflow-y-auto min-h-0 relative z-10 w-full">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-white tracking-tight text-[28px] font-bold leading-tight">
+                  {jitsiFailed ? 'Asynchronous Body Doubling' : 'Silent Co-working Lobby'}
+                </h1>
+                <p className="text-[#9893c8] text-sm mt-1 flex items-center gap-2">
+                  <span className="inline-block w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                  {Math.max(1, onlineUsers.length)} Member{onlineUsers.length !== 1 ? 's' : ''} in Deep Focus
+                </p>
+                <p className="text-slate-400 text-xs mt-1 font-mono">Room: {activeRoomId}</p>
+              </div>
+              <div className="flex items-center gap-4">
+                 <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-300 font-mono border border-amber-500/30">
+                   ⏱ {formatTime(sessionTimeLeft)} remaining
                  </span>
-                 <span className="text-sm font-medium text-slate-400 uppercase tracking-widest">
-                   Active User{onlineUsers.length !== 1 ? 's' : ''} in Protocol
-                 </span>
-               </div>
-             </div>
+                 <div className="flex items-center gap-2 bg-[#1c1a2e] border border-[#272447] rounded-lg p-1">
+                   <button onClick={() => jitsiApiRef.current?.executeCommand('toggleTileView')} className="p-2 rounded hover:bg-white/5 text-white" title="Grid View">
+                     <span className="material-symbols-outlined text-[20px]">grid_view</span>
+                   </button>
+                   <button className="p-2 rounded hover:bg-white/5 text-[#9893c8]" title="Speaker View">
+                     <span className="material-symbols-outlined text-[20px]">branding_watermark</span>
+                   </button>
+                 </div>
+              </div>
+            </div>
+
+            {/* Grid Container -> Wrapped around Jitsi API */}
+            <div className="flex-1 h-full w-full">
+               {jitsiFailed ? (
+                 <div className="w-full h-full min-h-[500px] rounded-2xl border border-[#272447] bg-[#1c1a2e]/50 flex flex-col items-center justify-center text-center p-8 shadow-2xl relative overflow-hidden">
+                   <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/40 via-[#131122]/10 to-transparent pointer-events-none" />
+                   <div className="relative z-10 max-w-lg">
+                     <Shield className="w-16 h-16 text-indigo-400 mx-auto mb-6 opacity-80" />
+                     <h2 className="text-2xl font-semibold text-slate-200 mb-4">Enterprise Firewall Detected</h2>
+                     <p className="text-slate-400 mb-8 leading-relaxed">
+                       Live video (WebRTC) is blocked on your current network. However, you are still anchored to the grid. 
+                       Work synchronously, knowing you aren't alone.
+                     </p>
+                     <div className="bg-[#131122]/80 border border-[#272447]/50 rounded-2xl p-6 shadow-inner inline-flex flex-col items-center">
+                       <span className="text-5xl font-black text-indigo-400 mb-2 drop-shadow-[0_0_15px_rgba(129,140,248,0.5)]">
+                         {Math.max(1, onlineUsers.length)}
+                       </span>
+                       <span className="text-sm font-medium text-slate-400 uppercase tracking-widest">
+                         Active User{onlineUsers.length !== 1 ? 's' : ''} in Protocol
+                       </span>
+                     </div>
+                   </div>
+                 </div>
+               ) : (
+                 <div
+                   ref={jitsiContainerRef}
+                   className="w-full h-full min-h-[500px] rounded-2xl overflow-hidden border border-[#272447] relative shadow-[0_0_20px_rgba(38,23,207,0.15)]"
+                 />
+               )}
+            </div>
           </div>
-        ) : (
-          <div
-            ref={jitsiContainerRef}
-            className="flex-1 rounded-3xl overflow-hidden border border-slate-800 relative shadow-2xl"
-            style={{ minHeight: '500px' }}
-          />
-        )}
+
+          {/* Right: Ambient Presence Sidebar */}
+          <aside className="w-80 bg-[rgba(28,26,46,0.7)] backdrop-blur-md border-l border-[#272447] flex flex-col shrink-0 z-20">
+            <div className="p-5 border-b border-[#272447]">
+              <h3 className="text-white font-bold text-base flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#2617cf]">graphic_eq</span>
+                Ambient Presence
+              </h3>
+              <p className="text-[#9893c8] text-xs mt-1">Real-time focus activity</p>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-5 space-y-0 custom-scrollbar">
+              {onlineUsers.length === 0 ? (
+                <p className="text-[#9893c8] text-sm text-center mt-4">Waiting for presence signals...</p>
+              ) : (
+                onlineUsers.map((user, idx) => {
+                  const isMe = user.user_id === currentUserId;
+                  const isLast = idx === onlineUsers.length - 1;
+                  const isMatchingTask = user.taskCategory === currentTaskCategory;
+
+                  let icon = 'psychology';
+                  let iconColor = 'text-[#2617cf]';
+                  let actionText = 'is focusing';
+
+                  if (user.status.includes('partner')) {
+                    icon = 'search';
+                    actionText = 'is looking for a partner';
+                    iconColor = 'text-amber-400';
+                  } else if (user.classification.includes('overload')) {
+                    icon = 'warning';
+                    actionText = 'is experiencing high load';
+                    iconColor = 'text-rose-400';
+                  } else if (user.classification.includes('hyperfocus')) {
+                    icon = 'bolt';
+                    actionText = 'entered hyperfocus';
+                    iconColor = 'text-emerald-400';
+                  } else if (user.taskCategory !== currentTaskCategory) {
+                    icon = 'check_circle';
+                    actionText = 'is working on a task';
+                    iconColor = 'text-green-400';
+                  }
+
+                  return (
+                    <div key={user.user_id} className="grid grid-cols-[24px_1fr] gap-x-4">
+                      <div className="flex flex-col items-center">
+                        <div className={`${iconColor} mt-1 relative`}>
+                          {pulseUserIds.has(user.user_id) && (
+                            <span className="absolute inset-0 rounded-full bg-current animate-ping opacity-75" />
+                          )}
+                          <span className="material-symbols-outlined text-[20px] relative z-10">{icon}</span>
+                        </div>
+                        <div className={`w-[1px] h-full min-h-[32px] my-1 ${isLast ? 'bg-gradient-to-b from-[#272447] to-transparent opacity-50' : 'bg-[#272447]'}`}></div>
+                      </div>
+                      <div className="pb-6 pt-1">
+                        <p className="text-slate-200 text-sm font-medium leading-snug">
+                          {isMe ? 'You ' : `Peer ${user.user_id.substring(0, 4)} `} {actionText}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          {isMatchingTask && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-[#2617cf] bg-[#2617cf]/10 px-1.5 py-0.5 rounded border border-[#2617cf]/20">
+                              <span className="w-1 h-1 rounded-full bg-[#2617cf] animate-pulse"></span>
+                              {TASK_CATEGORIES.find(c => c.key === user.taskCategory)?.label || user.taskCategory}
+                            </span>
+                          )}
+                          <p className="text-[#9893c8] text-xs capitalize">{user.status.replace(/_/g, ' ')}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Mini Focus Goal */}
+            <div className="p-4 bg-[#1c1a2e] border-t border-[#272447]">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-semibold text-[#9893c8] uppercase tracking-wider">Current Goal</span>
+                <span className="text-xs text-white bg-white/10 px-1.5 py-0.5 rounded">{formatTime(sessionTimeLeft)} left</span>
+              </div>
+              <p className="text-white text-sm truncate mb-3 capitalize">{currentTaskCategory.replace(/-/g, ' ')} Focus Block</p>
+              <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
+                <div className="bg-[#2617cf] h-1.5 rounded-full transition-all duration-1000" style={{ width: `${Math.max(0, (sessionTimeLeft / (SESSION_DURATION_MS / 1000))) * 100}%` }}></div>
+              </div>
+            </div>
+          </aside>
+        </main>
+
+        {/* Bottom Control Bar */}
+        <footer className="h-20 bg-[#131122] border-t border-[#272447] flex items-center justify-between px-8 z-30 shrink-0">
+          <div className="flex items-center gap-4 w-1/4">
+            <div className="flex flex-col">
+              <span className="text-white text-sm font-medium">Connected</span>
+              <span className="text-[#9893c8] text-xs">Low Latency • Encrypted</span>
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-center gap-3">
+            <button onClick={() => jitsiApiRef.current?.executeCommand('toggleVideo')} className="relative group size-12 flex items-center justify-center rounded-full bg-[#1c1a2e] border border-[#272447] text-[#9893c8] hover:bg-white/5 hover:text-white hover:border-white/20 transition-all">
+              <span className="material-symbols-outlined text-[24px]">videocam</span>
+              <span className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-black text-white text-xs px-2 py-1 rounded whitespace-nowrap pointer-events-none z-50">Toggle camera</span>
+            </button>
+            <button className="relative size-14 flex items-center justify-center rounded-full bg-red-500/10 border border-red-500/20 text-red-500 cursor-not-allowed transition-all" title="Enforced Silence Protocol">
+              <span className="material-symbols-outlined text-[28px]">mic_off</span>
+              <div className="absolute -bottom-1 -right-1 bg-[#1c1a2e] rounded-full p-0.5 border border-[#272447]">
+                <span className="material-symbols-outlined text-[14px] text-[#9893c8]">lock</span>
+              </div>
+            </button>
+            <button onClick={() => jitsiApiRef.current?.executeCommand('toggleShareScreen')} className="relative group size-12 flex items-center justify-center rounded-full bg-[#1c1a2e] border border-[#272447] text-[#9893c8] hover:bg-white/5 hover:text-white hover:border-white/20 transition-all">
+              <span className="material-symbols-outlined text-[24px]">screen_share</span>
+              <span className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-black text-white text-xs px-2 py-1 rounded whitespace-nowrap pointer-events-none z-50">Share screen</span>
+            </button>
+            <button onClick={() => jitsiApiRef.current?.executeCommand('toggleRaiseHand')} className="relative group size-12 flex items-center justify-center rounded-full bg-[#1c1a2e] border border-[#272447] text-[#9893c8] hover:bg-white/5 hover:text-white hover:border-white/20 transition-all">
+              <span className="material-symbols-outlined text-[24px]">back_hand</span>
+              <span className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-black text-white text-xs px-2 py-1 rounded whitespace-nowrap pointer-events-none z-50">Raise hand</span>
+            </button>
+          </div>
+          
+          <div className="flex items-center justify-end gap-4 w-1/4">
+            <button className="relative group size-10 flex items-center justify-center rounded-full text-[#9893c8] hover:bg-white/5 hover:text-white transition-all">
+              <span className="material-symbols-outlined text-[24px]">more_vert</span>
+            </button>
+            <button onClick={endSession} className="flex items-center justify-center gap-2 h-10 px-5 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 rounded-full text-sm font-bold transition-all shadow-lg hover:shadow-xl hover:scale-105 active:scale-95">
+              <span className="material-symbols-outlined text-[20px]">logout</span>
+              Leave Room
+            </button>
+          </div>
+        </footer>
+
+        {/* Global style for elegant scrollbars locked to this view */}
+        <style>{`
+          .custom-scrollbar::-webkit-scrollbar {
+              width: 4px;
+          }
+          .custom-scrollbar::-webkit-scrollbar-track {
+              background: transparent;
+          }
+          .custom-scrollbar::-webkit-scrollbar-thumb {
+              background: #272447;
+              border-radius: 10px;
+          }
+          .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+              background: #6366f1;
+          }
+        `}</style>
       </div>
     );
   }

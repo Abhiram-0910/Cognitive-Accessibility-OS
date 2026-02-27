@@ -1,0 +1,18 @@
+name: COPPA Storage Cleaner Cron
+
+on:
+  schedule:
+    # Run at midnight UTC daily
+    - cron: '0 0 * * *'
+  # Allow manual trigger from the GitHub Actions UI
+  workflow_dispatch:
+
+jobs:
+  run-cleaner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Edge Function
+        run: |
+          curl --retry 3 --retry-delay 5 --fail -X POST "${{ secrets.SUPABASE_EDGE_FUNCTION_URL }}/storage-cleaner" \
+          -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+          -H "Content-Type: application/json"

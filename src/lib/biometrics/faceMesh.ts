@@ -33,6 +33,8 @@ export interface EmotionMetrics {
   confusion: number;
   /** Present if data is derived from the proxy */
   isHeuristic?: boolean;
+  /** Present if baseline calibration is active */
+  isCalibrating?: boolean;
 }
 
 // ─── Blendshape helpers ───────────────────────────────────────────────────────

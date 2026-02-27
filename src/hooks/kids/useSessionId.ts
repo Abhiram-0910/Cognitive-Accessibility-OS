@@ -1,8 +1,6 @@
 /**
  * useSessionId  — Kids Module
  *
- * Ported from: _legacy_repo_to_port/Frontend/src/hooks/useSessionID.js
- *
  * Generates a stable UUID v4 session identifier on component mount and exposes
  * it for use in capture / expression-logging flows.
  *

@@ -1,161 +1,293 @@
 /**
  * GameSelection — Kids Module
- * Ported from: _legacy_repo_to_port/Frontend/src/components/GameSelection.js
  *
  * Game-picker screen shown to a child after login.
  * All functional logic preserved: username from localStorage,
  * logout handler, game navigation with state.
  */
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { LogOut, Gamepad2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-interface GameCard {
-  id: number;
-  title: string;
-  description: string;
-  /** Path relative to public/kids-assets/ */
-  image: string;
-  /** Emoji badge shown on the card */
-  badge: string;
-  onClick: () => void;
-}
-
-// ─── Animation variants ───────────────────────────────────────────────────────
-const containerVariants = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.15 } },
-};
-const cardVariants = {
-  hidden: { opacity: 0, y: 40, scale: 0.95 },
-  visible: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring' as const, stiffness: 200, damping: 18 } },
-};
+import { useCognitiveStore } from '../../stores/cognitiveStore';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function GameSelection() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('Player');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
-  // Derive username from Supabase auth session
+  // Derive username and avatar from Supabase auth session
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      const email = data.user?.email ?? '';
-      setUsername(email.split('@')[0] || 'Player');
+      if (data.user) {
+        const email = data.user.email ?? '';
+        setUsername(email.split('@')[0] || 'Player');
+        if (data.user.user_metadata?.avatar_url) {
+          setAvatarUrl(data.user.user_metadata.avatar_url);
+        }
+      }
     });
   }, []);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate('/');
+  const handlePanicButton = () => {
+    // Forcefully set the global Zustand store load score to 100 to instantly trigger CrisisMode
+    useCognitiveStore.setState({ cognitiveLoadScore: 100, classification: 'overload' });
   };
 
-  const games: GameCard[] = [
-    {
-      id: 1,
-      title: 'CRACK-THE-QUIZ',
-      description: 'Test your knowledge by answering simple quiz questions.',
-      image: '/kids-assets/quiz.png',
-      badge: '🧠',
-      onClick: () => navigate('/kids/play/1', { state: { username, gameName: 'CRACK-THE-QUIZ' } }),
-    },
-    {
-      id: 2,
-      title: 'DRAG-&-SPELL',
-      description: 'Drag the missing letter to its correct position to complete the word.',
-      image: '/kids-assets/drag.png',
-      badge: '✏️',
-      onClick: () => navigate('/kids/play/2', { state: { username, gameName: 'DRAG-&-SPELL' } }),
-    },
-  ];
+  const handleGameNavigation = (gameId: number, gameName: string) => {
+    navigate(`/kids/play/${gameId}`, { state: { username, gameName } });
+  };
+
+  // Fallback avatar if none provided in metadata
+  const fallbackAvatar = "https://lh3.googleusercontent.com/aida-public/AB6AXuA97EvgOcs-ahbkLsIJ8AabsBZ_ibHEQUVJtD6v_w2R5iVYUHhdvj2r2pvYY_nTQvmQ5zSGuHyubpZTAysOAASUPpOQ0tYYLYN4pFbpdQC_sXhGcbbdCAgoGqO7XXRaS7uFtSe2t1uCpjd4skTyq0IDW_EVVDWOuShowq_mc-Kk0WiGrWNNJHs_8C2BVWY-_8xO-ZN5_xzR9mOv9ueFJBvLZkRWJUj8rj3n6VSNjvfdcsS0H6A7LBBL8lAr8bL5pVddzjV2_tGflRk";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-900 via-purple-800 to-indigo-900 text-white">
-      {/* Navbar */}
-      <nav className="flex items-center justify-between px-6 py-4 backdrop-blur-md bg-white/10 border-b border-white/10">
-        <div className="flex items-center gap-2">
-          <Gamepad2 className="w-6 h-6 text-yellow-300" />
-          <span className="text-lg font-bold tracking-wide">Joy with Learning</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-white/70">
-            Hi, <span className="text-yellow-300 font-semibold">{username}</span>!
-          </span>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition text-sm"
-          >
-            <LogOut className="w-4 h-4" />
-            Logout
-          </button>
-        </div>
-      </nav>
-
-      {/* Main */}
-      <main className="flex flex-col items-center px-6 py-16 gap-12">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center"
-        >
-          <h1 className="text-4xl md:text-5xl font-black tracking-tight">
-            Select a Game 🎮
-          </h1>
-          <p className="mt-3 text-white/60 text-lg">Choose your challenge and let's go!</p>
-        </motion.div>
-
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-          className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-3xl"
-        >
-          {games.map(game => (
-            <motion.button
-              key={game.id}
-              variants={cardVariants}
-              whileHover={{ scale: 1.04, y: -6 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={game.onClick}
-              className="group relative flex flex-col items-center gap-4 p-8 rounded-3xl
-                         bg-white/10 backdrop-blur-md border border-white/20
-                         shadow-xl hover:shadow-purple-500/30 hover:border-white/40
-                         transition-all text-left cursor-pointer"
+    <div className="bg-[#fcfbf8] dark:bg-[#221d10] font-display antialiased min-h-screen flex flex-col transition-colors duration-300">
+      
+      {/* Inline styles for custom breathing animation */}
+      <style>{`
+        @keyframes gentle-breath {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .animate-breathe {
+            animation: gentle-breath 6s ease-in-out infinite;
+        }
+      `}</style>
+      
+      <div className="flex h-full grow flex-col">
+        {/* Header */}
+        <header className="sticky top-0 z-50 flex items-center justify-between whitespace-nowrap border-b border-solid border-[#f3f0e7] dark:border-[#3d341e] bg-[#fcfbf8]/90 dark:bg-[#221d10]/90 backdrop-blur-md px-6 py-4 md:px-10 lg:px-40">
+          <div className="flex items-center gap-4 text-[#422006] dark:text-yellow-100">
+            <div className="size-8 flex items-center justify-center text-[#eebd2b]">
+              <span className="material-symbols-outlined" style={{ fontSize: '32px' }}>psychology</span>
+            </div>
+            <h2 className="text-lg font-bold leading-tight tracking-[-0.015em]">NeuroAdaptive OS</h2>
+          </div>
+          <div className="flex items-center gap-4 md:gap-8">
+            {/* Panic / Calm Down Button */}
+            <button 
+              onClick={handlePanicButton}
+              className="group flex min-w-[84px] cursor-pointer items-center justify-center overflow-hidden rounded-full h-12 px-6 bg-[#eebd2b] hover:bg-yellow-400 transition-colors text-[#422006] text-base font-bold leading-normal tracking-[0.015em] shadow-sm hover:shadow-md transform active:scale-95"
             >
-              {/* Badge */}
-              <span className="absolute top-4 right-4 text-2xl">{game.badge}</span>
+              <span className="material-symbols-outlined mr-2">spa</span>
+              <span className="hidden sm:inline">Calm Down / Pause</span>
+            </button>
+            {/* User Profile */}
+            <div 
+              className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-12 ring-2 ring-[#eebd2b]/20" 
+              style={{ backgroundImage: `url("${avatarUrl || fallbackAvatar}")` }}
+            ></div>
+          </div>
+        </header>
 
-              <img
-                src={game.image}
-                alt={game.title}
-                className="w-36 h-36 object-contain drop-shadow-lg group-hover:scale-105 transition-transform"
-                onError={(e) => {
-                  const target = e.currentTarget;
-                  target.onerror = null; // Prevent infinite loop
-                  target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144"><rect fill="%231e1b4b" width="144" height="144" rx="16"/><text x="72" y="82" text-anchor="middle" font-size="48">🎮</text></svg>';
-                  console.error(`[GameSelection] ⚠ Failed to load asset: ${game.image}`);
-                }}
-              />
-              <div className="text-center">
-                <h2 className="text-xl font-black tracking-wide text-yellow-300">
-                  {game.title}
-                </h2>
-                <p className="mt-2 text-white/70 text-sm leading-relaxed">
-                  {game.description}
+        {/* Main Content Area */}
+        <main className="flex-1 flex justify-center px-4 py-8 md:px-10 lg:px-40">
+          <div className="flex flex-col w-full max-w-[960px] flex-1 gap-8 md:gap-12">
+            
+            {/* Greeting Section */}
+            <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-col gap-3">
+                <h1 className="text-[#422006] dark:text-yellow-50 text-[32px] font-black leading-tight md:text-5xl tracking-tight">
+                  Hello, {username}!
+                </h1>
+                <p className="text-[#422006]/80 dark:text-yellow-100/80 text-lg font-medium leading-normal max-w-[600px]">
+                  Welcome to your calm space. It's a beautiful day to play and relax. What would you like to do?
                 </p>
               </div>
-
-              {/* Play arrow */}
-              <div className="mt-2 flex items-center gap-1 text-sm font-semibold text-white/50 group-hover:text-yellow-300 transition-colors">
-                <span>Play now</span>
-                <span className="group-hover:translate-x-1 transition-transform">→</span>
+              {/* Daily Goal Widget */}
+              <div className="bg-[#fffdf5] dark:bg-[#2d2616] border border-[#f3f0e7] dark:border-[#3d341e] p-5 rounded-xl shadow-sm w-full md:w-auto min-w-[280px]">
+                <div className="flex gap-4 justify-between items-center mb-3">
+                  <p className="text-[#422006] dark:text-yellow-100 text-sm font-bold uppercase tracking-wider">Calmness Goal</p>
+                  <span className="material-symbols-outlined text-[#eebd2b]">emoji_events</span>
+                </div>
+                <div className="h-4 w-full bg-[#fcfbf8] dark:bg-[#1b180d] rounded-full overflow-hidden">
+                  <div className="h-full bg-[#eebd2b] rounded-full" style={{ width: '75%' }}></div>
+                </div>
+                <p className="text-[#9a864c] dark:text-yellow-200/70 text-xs font-medium mt-2 text-right">Great job today!</p>
               </div>
-            </motion.button>
-          ))}
-        </motion.div>
-      </main>
+            </div>
+
+            {/* Featured Activity: Breathe */}
+            <section className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
+              <div className="md:col-span-12 lg:col-span-8 bg-[#fffdf5] dark:bg-[#2d2616] border border-[#f3f0e7] dark:border-[#3d341e] rounded-xl p-8 flex flex-col md:flex-row items-center gap-8 shadow-sm relative overflow-hidden group hover:border-[#eebd2b]/50 transition-colors cursor-pointer">
+                <div className="absolute top-0 right-0 p-32 bg-[#eebd2b]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+                <div className="relative z-10 flex-shrink-0">
+                  <div className="size-32 md:size-40 bg-[#eebd2b]/10 rounded-full flex items-center justify-center animate-breathe text-[#eebd2b]">
+                    <span className="material-symbols-outlined text-[64px] md:text-[80px]">sentiment_satisfied</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-3 relative z-10 text-center md:text-left items-center md:items-start">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#eebd2b]/20 text-[#422006] dark:text-yellow-100 text-xs font-bold uppercase tracking-wide">
+                    <span className="material-symbols-outlined text-sm">self_improvement</span> Recommended
+                  </div>
+                  <h2 className="text-[#422006] dark:text-yellow-50 text-2xl md:text-3xl font-bold">Breathe with Bear</h2>
+                  <p className="text-[#422006]/70 dark:text-yellow-100/70 text-lg max-w-md">Take a moment to watch the gentle bear breathe in and out. Let's match our breathing together.</p>
+                  <button className="mt-2 text-[#422006] bg-[#eebd2b] hover:bg-yellow-400 font-bold py-3 px-8 rounded-full transition-all inline-flex items-center gap-2 transform active:scale-95">
+                    <span className="material-symbols-outlined">play_circle</span>
+                    Start Breathing
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Stats / Feeling Check-in */}
+              <div className="md:col-span-12 lg:col-span-4 flex flex-col gap-4">
+                <div className="flex-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30 rounded-xl p-6 flex flex-col justify-center items-center text-center gap-3">
+                  <span className="material-symbols-outlined text-4xl text-blue-400">mood</span>
+                  <div>
+                    <h3 className="text-lg font-bold text-[#422006] dark:text-yellow-50">How do you feel?</h3>
+                    <p className="text-sm text-[#422006]/70 dark:text-yellow-100/60">Check in with yourself</p>
+                  </div>
+                </div>
+                <div className="flex-1 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/30 rounded-xl p-6 flex flex-col justify-center items-center text-center gap-3">
+                  <span className="material-symbols-outlined text-4xl text-green-400">water_drop</span>
+                  <div>
+                    <h3 className="text-lg font-bold text-[#422006] dark:text-yellow-50">Water Reminder</h3>
+                    <p className="text-sm text-[#422006]/70 dark:text-yellow-100/60">Have a sip of water</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Game Categories */}
+            <div className="flex flex-col gap-6">
+              <h3 className="text-[#422006] dark:text-yellow-50 text-2xl font-bold px-2">Fun Activities</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                
+                {/* GAME 1: CRACK THE QUIZ (formerly Puzzle Time) */}
+                <motion.div 
+                  whileHover={{ y: -4 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => handleGameNavigation(1, 'CRACK-THE-QUIZ')}
+                  className="group flex flex-col gap-4 bg-[#fffdf5] dark:bg-[#2d2616] p-4 rounded-xl border border-[#f3f0e7] dark:border-[#3d341e] hover:shadow-md transition-all cursor-pointer"
+                >
+                  <div className="w-full bg-center bg-no-repeat aspect-[4/3] bg-cover rounded-lg overflow-hidden relative" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuAVVZb0FgVrAeQ7HaCmRx2q-kg23HlkYXP3bui4gdavuAEh-FJh2Hc95CMq0ANW2f0AnB3l2z7LC3_vcTUMsMNmEnxLR7ygDHuv7ifx6Do_hR7iUhQPaumrPbE8W5nNFD4TBXLaq3-oh9vo2HhJFYCWRA_r6IiYgSjTY8BrGhtkHFiwO65es7La1N3vqdMpaoMuY7Jrw_6stCIG673D2Tzm7AYusAHE23XPo6MzGuoFLXGilcMctmyu_B2fQf1nTo2RPeVBml12-bc")' }}>
+                    <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
+                    <div className="absolute top-3 right-3 bg-white/90 dark:bg-black/60 backdrop-blur rounded-full p-2 text-[#eebd2b] shadow-sm">
+                      <span className="material-symbols-outlined block">extension</span>
+                    </div>
+                  </div>
+                  <div className="px-2 pb-2">
+                    <h4 className="text-[#422006] dark:text-yellow-50 text-xl font-bold leading-tight mb-1">Crack the Quiz</h4>
+                    <p className="text-[#9a864c] dark:text-yellow-200/70 text-sm font-medium">Test your knowledge with fun questions</p>
+                  </div>
+                </motion.div>
+
+                {/* GAME 2: DRAG & SPELL (formerly Drawing Space) */}
+                <motion.div 
+                  whileHover={{ y: -4 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => handleGameNavigation(2, 'DRAG-&-SPELL')}
+                  className="group flex flex-col gap-4 bg-[#fffdf5] dark:bg-[#2d2616] p-4 rounded-xl border border-[#f3f0e7] dark:border-[#3d341e] hover:shadow-md transition-all cursor-pointer"
+                >
+                  <div className="w-full bg-center bg-no-repeat aspect-[4/3] bg-cover rounded-lg overflow-hidden relative" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuA2NaNKH7cX1zDJmfTsZDQDnztP2A6I16jAYXVQ1O91FNy8KH0s7Unf1axDYb89QVPQlHqeTxPEG-tAknecb_Np5Q_hlWcs1GR3LqggwBE1lQu90VLjyVTdW0e3p9jO4XbOi9KUc1-ecSOZ8ZI8BmYMds2xEuMdCCSMind-hTgwdOFNyd68okVKxmmwZcB3ZJ2c7FXgFe_SCoDkAD8I2oJVCv92ytZSxSZ-xNghnaY1Kx8MXlgUg9CDoZASsqrqwujawzbvJxArSQk")' }}>
+                    <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
+                    <div className="absolute top-3 right-3 bg-white/90 dark:bg-black/60 backdrop-blur rounded-full p-2 text-[#eebd2b] shadow-sm">
+                      <span className="material-symbols-outlined block">palette</span>
+                    </div>
+                  </div>
+                  <div className="px-2 pb-2">
+                    <h4 className="text-[#422006] dark:text-yellow-50 text-xl font-bold leading-tight mb-1">Drag & Spell</h4>
+                    <p className="text-[#9a864c] dark:text-yellow-200/70 text-sm font-medium">Drag the missing letter to learn words</p>
+                  </div>
+                </motion.div>
+
+                {/* Card 3: Stories */}
+                <motion.div 
+                  whileHover={{ y: -4 }}
+                  className="group flex flex-col gap-4 bg-[#fffdf5] dark:bg-[#2d2616] p-4 rounded-xl border border-[#f3f0e7] dark:border-[#3d341e] hover:shadow-md transition-all cursor-pointer"
+                >
+                  <div className="w-full bg-center bg-no-repeat aspect-[4/3] bg-cover rounded-lg overflow-hidden relative" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuA7ndBsCjk_Sy9_r_TrzTqz_M8iCoHPlcsqsnTaZ1y_7VKZapPUdyVe9Ko80qKuhSOFqpMbbi58d60-xFHJEtEb2JnhpT_fRdDlcbsf8xVTKc6SM9qRNLqyGAJg9edoczWh9Dk4poGGATHihSAyxEeIl_k77FlQhaUgvZRGxFmDEtKGZbjBWLpC6iEHCBBTbi2zf_klU5aB9aNDX2SJiFAZl9k2_BuxJ-PKDJlXj21zMVbbZBTsy5Z9Osy8YoagrawoLQkGAtGwV_M")' }}>
+                    <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
+                    <div className="absolute top-3 right-3 bg-white/90 dark:bg-black/60 backdrop-blur rounded-full p-2 text-[#eebd2b] shadow-sm">
+                      <span className="material-symbols-outlined block">auto_stories</span>
+                    </div>
+                  </div>
+                  <div className="px-2 pb-2">
+                    <h4 className="text-[#422006] dark:text-yellow-50 text-xl font-bold leading-tight mb-1">Story World</h4>
+                    <p className="text-[#9a864c] dark:text-yellow-200/70 text-sm font-medium">Read calming stories together</p>
+                  </div>
+                </motion.div>
+
+                {/* Card 4: Music (Extra) */}
+                <motion.div 
+                  whileHover={{ y: -4 }}
+                  className="group flex flex-col gap-4 bg-[#fffdf5] dark:bg-[#2d2616] p-4 rounded-xl border border-[#f3f0e7] dark:border-[#3d341e] hover:shadow-md transition-all cursor-pointer"
+                >
+                  <div className="w-full bg-center bg-no-repeat aspect-[4/3] bg-cover rounded-lg overflow-hidden relative" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuD0ojLX0BdeIrnxrGjGrJDZXCuydQR1TEdUuGSxdxT4pMQXyoGnGq61J1uQY0B9bOE9uNPFzRrSrcW6BOqNIKwCSjLSOPNrQRnU1S0I3U73AnuwMvRRY3whlzzF9vOWTKk8_us025thatTqiKEpsGzxZNXb-7FugfWNiHWPR9e46yvsd5m4c51ua_V2mCH49df7NoEMouoUmnolpuomfXQUbYJZm8AGdL1W4wGUA37HL_eBZxGY2NuemanJoyr6PBg2u-Ue5NSTNGQ")' }}>
+                    <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
+                    <div className="absolute top-3 right-3 bg-white/90 dark:bg-black/60 backdrop-blur rounded-full p-2 text-[#eebd2b] shadow-sm">
+                      <span className="material-symbols-outlined block">music_note</span>
+                    </div>
+                  </div>
+                  <div className="px-2 pb-2">
+                    <h4 className="text-[#422006] dark:text-yellow-50 text-xl font-bold leading-tight mb-1">Calm Sounds</h4>
+                    <p className="text-[#9a864c] dark:text-yellow-200/70 text-sm font-medium">Listen to rain, forest, and ocean</p>
+                  </div>
+                </motion.div>
+
+                {/* Card 5: Garden (Extra) */}
+                <motion.div 
+                  whileHover={{ y: -4 }}
+                  className="group flex flex-col gap-4 bg-[#fffdf5] dark:bg-[#2d2616] p-4 rounded-xl border border-[#f3f0e7] dark:border-[#3d341e] hover:shadow-md transition-all cursor-pointer"
+                >
+                  <div className="w-full bg-center bg-no-repeat aspect-[4/3] bg-cover rounded-lg overflow-hidden relative" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuBDu7r9klunnZ7GVP4PYrrF-WmH_XYj8BMM5KAIUlxbz0R6fb6_Fe4JCMjC9kLhiNn3PhuD5udmFaiBu7oL80coyhjCHTp9xzAOrCxbf5l2GUwYstQ-seiUK0fSKeeereRLRXXjKOqqANqx-495xpFkPe0ahmYEYnv5l2Znw_8RaK4cyGgQVZABN27eE943wYNFfYwA9RZFyhqVKcSbXFJfC-EdN0YYyPSoJgyUBX9LYw_3ekx4pvfk_ZbJDSYJKEVjFb2Vl2QW3Xk")' }}>
+                    <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
+                    <div className="absolute top-3 right-3 bg-white/90 dark:bg-black/60 backdrop-blur rounded-full p-2 text-[#eebd2b] shadow-sm">
+                      <span className="material-symbols-outlined block">potted_plant</span>
+                    </div>
+                  </div>
+                  <div className="px-2 pb-2">
+                    <h4 className="text-[#422006] dark:text-yellow-50 text-xl font-bold leading-tight mb-1">Tiny Garden</h4>
+                    <p className="text-[#9a864c] dark:text-yellow-200/70 text-sm font-medium">Grow your own digital plants</p>
+                  </div>
+                </motion.div>
+
+                {/* Card 6: Sensory (Extra) */}
+                <motion.div 
+                  whileHover={{ y: -4 }}
+                  className="group flex flex-col gap-4 bg-[#fffdf5] dark:bg-[#2d2616] p-4 rounded-xl border border-[#f3f0e7] dark:border-[#3d341e] hover:shadow-md transition-all cursor-pointer"
+                >
+                  <div className="w-full bg-center bg-no-repeat aspect-[4/3] bg-cover rounded-lg overflow-hidden relative" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuCtDVrxMJHPmuSmV9ttxmAcO-eZgaroqWOHpFcE-RVp9L93AuqkJYquzAJPMBNGjSwdS297qIes4VGGZnJjA6EXsZNsEi3PFrGO46Z-nmLEwhFKfkPzHdw4HklRJjr8D0rPDxzvlpus20SfT-NKMEWNxJhURcOpfBcv0QMpMJ2s6rJwm3QEt04vEC23KqLHeq8lO4plXJcvFDGsn-fuz2mBanDLdDk_tsGbT5II4Muwxuus-WryVnImWuourMbjPvVblVTIDy3u4ro")' }}>
+                    <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
+                    <div className="absolute top-3 right-3 bg-white/90 dark:bg-black/60 backdrop-blur rounded-full p-2 text-[#eebd2b] shadow-sm">
+                      <span className="material-symbols-outlined block">bubble_chart</span>
+                    </div>
+                  </div>
+                  <div className="px-2 pb-2">
+                    <h4 className="text-[#422006] dark:text-yellow-50 text-xl font-bold leading-tight mb-1">Bubble Pop</h4>
+                    <p className="text-[#9a864c] dark:text-yellow-200/70 text-sm font-medium">Pop bubbles for fun sounds</p>
+                  </div>
+                </motion.div>
+                
+              </div>
+            </div>
+
+            {/* Footer / Quick Settings */}
+            <div className="mt-8 flex justify-between items-center py-6 border-t border-[#f3f0e7] dark:border-[#3d341e]">
+              <p className="text-[#9a864c] text-sm">© NeuroAdaptive OS 2024</p>
+              <div className="flex gap-4">
+                <button className="p-3 rounded-full bg-[#fffdf5] dark:bg-[#2d2616] border border-[#f3f0e7] dark:border-[#3d341e] text-[#422006] hover:bg-[#fcfbf8] dark:hover:bg-[#1b180d] transition-colors" title="Settings">
+                  <span className="material-symbols-outlined text-lg">settings</span>
+                </button>
+                <button 
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    navigate('/');
+                  }}
+                  className="p-3 rounded-full bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 text-red-600 transition-colors flex items-center gap-2 px-5 font-bold text-sm" 
+                  title="Logout"
+                >
+                  <span className="material-symbols-outlined text-lg">logout</span>
+                  Logout
+                </button>
+              </div>
+            </div>
+            
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

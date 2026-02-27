@@ -88,13 +88,14 @@ interface CognitiveState {
   updateAudioSettings: (settings: Partial<AudioSettings>) => void;
   setAudioDucked: (ducked: boolean) => void;
   setHardwareMuted: (muted: boolean) => void;
+  juggleAudioContext: () => void;
   activeHeavyCompute: boolean;
   setActiveHeavyCompute: (active: boolean) => void;
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
-export const useCognitiveStore = create<CognitiveState>((set) => ({
+export const useCognitiveStore = create<CognitiveState>((set, get) => ({
   metrics: {
     keystrokesPerMinute: 0,
     errorRate: 0,
@@ -148,5 +149,19 @@ export const useCognitiveStore = create<CognitiveState>((set) => ({
     }),
   setAudioDucked: (ducked) => set({ isAudioDucked: ducked }),
   setHardwareMuted: (muted) => set({ isHardwareMuted: muted }),
+  juggleAudioContext: () => {
+    const ctx = get().globalAudioContext;
+    if (ctx && ctx.state === 'suspended') {
+      try {
+        ctx.resume().then(() => {
+          if (ctx.state === 'running') {
+            ctx.suspend().catch(() => {});
+          }
+        }).catch(() => {});
+      } catch (err) {
+        // Suppress errors to prevent console spam if browser blocks state change
+      }
+    }
+  },
   setActiveHeavyCompute: (active) => set({ activeHeavyCompute: active }),
 }));

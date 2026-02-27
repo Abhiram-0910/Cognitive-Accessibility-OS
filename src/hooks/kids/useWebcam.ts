@@ -1,8 +1,6 @@
 /**
  * useWebcam  — Kids Module
  *
- * Ported from: _legacy_repo_to_port/Frontend/src/hooks/useWebcam.js
- *
  * ─── ARCHITECTURE NOTE ──────────────────────────────────────────────────────
  * The main neuro-adaptive OS already uses `BiometricVisionEngine` (see
  * src/lib/biometrics/faceMesh.ts) which owns a MediaPipe FaceLandmarker
