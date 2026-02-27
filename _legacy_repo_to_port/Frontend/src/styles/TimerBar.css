@@ -1,0 +1,25 @@
+.timer-bar {
+  height: 20px;
+  width: 100%; /* Set to 100% to fill the parent container */
+  background-color: #ccc;
+  border-radius: 5px; /* Slightly more rounded edges */
+  overflow: hidden; /* Ensure fill doesn't overflow */
+}
+
+.timer-fill {
+  height: 100%;
+  background-color: #4caf50;
+  transition: width 1s linear;
+}.timer-bar {
+  height: 20px;
+  width: 100%; /* Set to 100% to fill the parent container */
+  background-color: #ccc;
+  border-radius: 5px; /* Slightly more rounded edges */
+  overflow: hidden; /* Ensure fill doesn't overflow */
+}
+
+.timer-fill {
+  height: 100%;
+  background-color: #4caf50;
+  transition: width 1s linear;
+}

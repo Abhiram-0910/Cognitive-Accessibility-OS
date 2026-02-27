@@ -1,0 +1,21 @@
+/* Enable dropdown on hover */
+.user-dropdown:hover .dropdown-menu {
+    display: block;
+}
+/* Hover Effect */
+.hover-effect:hover {
+    background-color: rgba(46, 168, 177, 0.1);
+    border-radius: 5px;
+    transition: all 0.3s ease;
+}
+
+/* Dropdown Menu */
+.user-dropdown .dropdown-menu {
+    min-width: 200px;
+}
+
+.user-dropdown:hover {
+    background-color: rgba(48, 168, 176, 0.1);
+    border-radius: 5px;
+    transition: all 0.3s ease;
+}

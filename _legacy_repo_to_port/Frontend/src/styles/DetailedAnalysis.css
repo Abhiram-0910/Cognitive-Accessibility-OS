@@ -1,0 +1,113 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+/* Circular Loader Styles */
+.loading-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+.circular-loader {
+  border: 8px solid #f3f3f3; /* Light grey */
+  border-top: 8px solid#808080; /* Blue */
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Container for the image analysis */
+.container-fluid {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+/* Image strip container */
+.image-strip-container {
+  display: inline-block;
+  margin: 20px;
+  padding: 20px;
+  background-color: white;
+  overflow-x: auto;
+  white-space: nowrap;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.197);
+}
+
+/* Image strip styling */
+.image-strip {
+  display: inline-flex;
+  gap: 20px;
+}
+
+/* Individual image box styling */
+.image-box {
+  display: inline-block;
+  text-align: center;
+}
+
+/* Image container */
+.image-container {
+  position: relative;
+  width: 320px;
+  height: 160px;
+  border: 5px solid black;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  padding: 5px;
+}
+
+.image-container img {
+  width: 48%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.time-percentage {
+  margin-bottom: 10px;
+  font-weight: bold;
+  font-size: 16px;
+  text-align: center;
+}
+
+/* Detailed analysis box */
+.detailed-analysis {
+  width: auto;
+  max-width: 320px;
+  background-color: #f4f4f4;
+  border: 2px solid black;
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+  margin-top: 10px;
+}
+
+h1 {
+  text-align: center;
+  margin-bottom: 20px;
+  font-size: 28px;
+  font-weight: bold;
+  color: #333;
+}
