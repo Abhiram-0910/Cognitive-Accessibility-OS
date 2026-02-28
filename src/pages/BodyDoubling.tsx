@@ -149,8 +149,8 @@ export const BodyDoubling: React.FC = () => {
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          const { data: { session } } = await supabase.auth.getSession();
-          const userId = session?.user?.id || `guest_${Math.random().toString(36).substring(7)}`;
+          // Use current session ID or guest fallback. App.tsx already guarantees session exists here.
+          const userId = currentUserId || `guest_${Math.random().toString(36).substring(7)}`;
 
           if (isMountedRef.current) {
             setCurrentUserId(userId);

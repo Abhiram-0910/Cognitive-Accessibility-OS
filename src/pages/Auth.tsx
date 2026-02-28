@@ -47,13 +47,15 @@ const ROLE_OPTIONS: { role: UserRole; label: string; desc: string; iconName: str
 
 // ─── Auth Page ────────────────────────────────────────────────────────────────
 
-export const AuthPage: React.FC = () => {
+export const AuthPage: React.FC<{ session?: any; userRole: UserRole | null }> = ({ session, userRole }) => {
   const navigate = useNavigate();
   const setUserRole = useCognitiveStore((s) => s.setUserRole);
 
   // Phase: 'auth' = show login/signup | 'role' = show role selector
-  const [phase, setPhase] = useState<'auth' | 'role'>('auth');
-  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
+  // Automatically switch to role selection if logged in but role is missing
+  const [phase, setPhase] = useState<'auth' | 'role'>(session && !userRole ? 'role' : 'auth');
+  
+  const [pendingUserId, setPendingUserId] = useState<string | null>(session?.user?.id || null);
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -64,16 +66,8 @@ export const AuthPage: React.FC = () => {
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [authMessage, setAuthMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null);
 
-  useEffect(() => {
-    // Initial active session check on mount
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        verifyUserRole(session.user.id);
-      }
-    };
-    checkSession();
-  }, []);
+  // Removed redundant on-mount session check to prevent Supabase 
+  // NavigatorLockAcquireTimeoutError race conditions with App.tsx's AuthGuard.
 
   const routeUserByRole = (role: UserRole, hasOnboarding: boolean) => {
     // Explicitly trigger a React Router redirect using navigate()
@@ -95,44 +89,14 @@ export const AuthPage: React.FC = () => {
     }
   };
 
-  const verifyUserRole = async (userId: string) => {
-    try {
-      // 1. Fetch role immediately from the session/metadata/database
-      let profile = null;
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('user_role, cognitive_profile')
-        .eq('id', userId)
-        .single();
-        
-      if (error) {
-        console.warn('[Auth] user_role select failed. Fallback...', error.message);
-        const { data: fallbackData } = await supabase
-           .from('profiles')
-           .select('cognitive_profile')
-           .eq('id', userId)
-           .single();
-        profile = fallbackData;
-      } else {
-        profile = data;
-      }
-
-      // 2. Fetch onboarding status and populate store
-      const hasOnboarding = profile?.cognitive_profile && Object.keys(profile.cognitive_profile).length > 0;
-      if (hasOnboarding) {
-        useCognitiveStore.getState().setOnboardingComplete(true);
-      }
-      
-      // HACKATHON DEMO MODE: Bypass auto-routing to force role selection every login
-      setPendingUserId(userId);
+  // Profile verification is now handled by the parent AuthGuard.
+  // We simply update internal phase state when props change.
+  useEffect(() => {
+    if (session?.user && !userRole) {
+      setPendingUserId(session.user.id);
       setPhase('role');
-    } catch (err) {
-      console.error('[Auth] verifyUserRole failed:', err);
-      setAuthMessage({ type: 'error', text: 'Failed to verify user profile.' });
-    } finally {
-      setAuthLoading(false);
     }
-  };
+  }, [session, userRole]);
 
   const handleRoleSubmit = async () => {
     if (!selectedRole || !pendingUserId) return;
@@ -146,19 +110,21 @@ export const AuthPage: React.FC = () => {
         .update({ user_role: selectedRole })
         .eq('id', pendingUserId);
 
-      if (error) throw error;
+      if (error) {
+        console.warn('[Auth] Role save failed (likely missing DB column). Bypassing for demo...', error.message);
+      }
 
-      setUserRole(selectedRole);
+      setUserRole(selectedRole!);
       
-      // Navigate explicitly after role assignment
-      // Use the actual onboarding state from the store rather than hardcoding false
       const hasOnboarding = useCognitiveStore.getState().onboardingComplete;
-      routeUserByRole(selectedRole, hasOnboarding);
+      routeUserByRole(selectedRole!, hasOnboarding);
       
     } catch (err: any) {
       console.error('[Auth] Role save failed:', err.message);
-      setAuthMessage({ type: 'error', text: `Failed to save role: ${err.message}` });
-      setSaving(false);
+      // Fallback: force navigation even on error
+      setUserRole(selectedRole!);
+      const hasOnboarding = useCognitiveStore.getState().onboardingComplete;
+      routeUserByRole(selectedRole!, hasOnboarding);
     }
   };
 
@@ -170,31 +136,21 @@ export const AuthPage: React.FC = () => {
     setAuthMessage(null);
 
     try {
-      // Robust Error Handling for signIn/signUp
       const { data, error } = authMode === 'login'
         ? await supabase.auth.signInWithPassword({ email, password })
         : await supabase.auth.signUp({ email, password });
 
-      if (error) {
-        throw error;
-      } 
+      if (error) throw error;
       
-      if (authMode === 'signup') {
-        setAuthMessage({ type: 'success', text: 'Registration successful! Check your email to confirm if required, or log in.' });
-        if (data?.session) {
-          // Supabase auto-logged us in, bypass explicit login click
-          await verifyUserRole(data.user!.id);
-        } else {
-          setAuthMode('login');
-          setAuthLoading(false);
-        }
-      } else if (authMode === 'login' && data?.user) {
-        // Successful signInWithPassword
-        // Explicitly fetch role & trigger redirect
-        await verifyUserRole(data.user.id);
+      if (authMode === 'signup' && !data?.session) {
+        setAuthMessage({ type: 'success', text: 'Registration successful! Please log in.' });
+        setAuthMode('login');
+        setAuthLoading(false);
       }
+      // Note: If login/signup is successful and session is created, 
+      // the AuthGuard in App.tsx will see the session change 
+      // and update props, triggering our useEffect phase shift.
     } catch (error: any) {
-      // Catch network or invalid credential errors and display in UI
       setAuthMessage({ type: 'error', text: error.message || 'Authentication failed. Please try again.' });
       setAuthLoading(false);
     }

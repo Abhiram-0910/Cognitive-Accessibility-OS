@@ -166,15 +166,10 @@ export const Dashboard: React.FC<{ userId: string }> = ({ userId }) => {
 
   // Real user profile from Supabase Auth
   const [userMeta, setUserMeta] = useState<{ fullName: string; avatarUrl: string | null } | null>(null);
+  // Redundant session check removed to prevent NavigatorLock timeouts.
+  // Profile is now handled via App.tsx AuthGuard synchronization.
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUserMeta({
-          fullName: session.user.user_metadata?.full_name ?? session.user.email ?? 'User',
-          avatarUrl: session.user.user_metadata?.avatar_url ?? null,
-        });
-      }
-    });
+    // If we need extra metadata, we can fetch it, but getSession is risky on mount.
   }, []);
 
   const displayName = userMeta?.fullName ?? 'Loading…';

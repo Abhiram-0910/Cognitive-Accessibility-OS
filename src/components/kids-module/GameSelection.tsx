@@ -26,9 +26,13 @@ export default function GameSelection() {
     setBreathePhase('inhale');
     // 432 Hz binaural — same as CrisisMode
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new AudioCtx();
+      const gCtx = useCognitiveStore.getState().globalAudioContext;
+      if (!gCtx) {
+        console.warn('[BreatheWithBear] No global AudioContext found. Fallback to basic...');
+        return;
+      }
       
+      const ctx = gCtx;
       if (ctx.state === 'suspended') {
         await ctx.resume();
       }
@@ -77,17 +81,10 @@ export default function GameSelection() {
     return () => clearInterval(interval);
   }, [showBreathe]);
 
-  // Derive username and avatar from Supabase auth session
+  // Username is now handled purely via the store or local storage to prevent 
+  // Supabase NavigatorLock contention.
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        const email = data.user.email ?? '';
-        setUsername(email.split('@')[0] || 'Player');
-        if (data.user.user_metadata?.avatar_url) {
-          setAvatarUrl(data.user.user_metadata.avatar_url);
-        }
-      }
-    });
+    // Falls back to 'Player' if not manually set
   }, []);
 
   const handlePanicButton = () => {

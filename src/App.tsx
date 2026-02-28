@@ -62,21 +62,21 @@ const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
 
   const isOnboardingComplete = onboardingComplete || storeOnboardingComplete;
 
-  const stopLoopRef = React.useRef(false);
+  // Safety Timeout: Force release loading if Supabase/Network hangs
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 6000); 
+    return () => clearTimeout(timer);
+  }, []);
 
   const checkAuthAndProfile = useCallback(async (currentSession: any) => {
-    if (stopLoopRef.current) return;
-    stopLoopRef.current = true; // Prevent rapid re-firing
-    
-    // REMOVED: setLoading(true) to prevent destroying the <Router> mid-session!
-
     if (!currentSession) {
       setSession(null);
       setOnboardingComplete(false);
       setUserRole(null);
       setLoading(false);
       window.postMessage({ type: 'NEUROADAPT_AUTH', status: 'unauthenticated' }, '*');
-      setTimeout(() => { stopLoopRef.current = false; }, 2000); // Release lock
       return;
     }
 
@@ -119,32 +119,61 @@ const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
       console.error("[AuthGuard] Profile check crashed:", error);
     } finally {
       setLoading(false);
-      // Allow re-checking after 2 seconds to prevent rapid loop
-      setTimeout(() => { stopLoopRef.current = false; }, 2000);
     }
   }, [setStoreOnboardingComplete, setUserRole]);
 
+  // 1. Pure Session Listener (Unblocks UI instantly)
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      checkAuthAndProfile(session);
-    });
+    let mounted = true;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
-      if (event === 'SIGNED_OUT') {
-        alert("⚠️ Session expired. Please save your work and refresh the page to log in again.");
-        return;
+    async function initAuth() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (mounted) {
+        setSession(session);
+        setLoading(false);
       }
+    }
 
-      if (event === 'TOKEN_REFRESHED') {
+    initAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+      if (mounted) {
         setSession(currentSession);
-        return;
+        setLoading(false);
       }
-
-      checkAuthAndProfile(currentSession);
     });
 
-    return () => subscription.unsubscribe();
-  }, [checkAuthAndProfile]);
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // 2. Background Profile Sync (Does not block UI)
+  useEffect(() => {
+    if (!session?.user) return;
+
+    async function syncProfile() {
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('cognitive_profile, user_role')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profile) {
+          const isComplete = profile.cognitive_profile && Object.keys(profile.cognitive_profile).length > 0;
+          setOnboardingComplete(!!isComplete);
+          setStoreOnboardingComplete(!!isComplete);
+          if (profile.user_role) setUserRole(profile.user_role as UserRole);
+        }
+      } catch (e) {
+        console.warn('[AuthGuard] Profile sync deferred:', e);
+      }
+    }
+
+    syncProfile();
+  }, [session, setStoreOnboardingComplete, setUserRole]);
 
   if (loading) {
     return (
@@ -291,14 +320,14 @@ export default function App() {
         {(session, onboardingComplete, userRole) => (
           <Routes>
             {/* ── Public Routes ────────────────────────────────────────── */}
-            <Route path="/auth" element={<Auth />} />
+            <Route path="/auth" element={<Auth session={session} userRole={userRole} />} />
             <Route path="/unauthorized" element={<Unauthorized />} />
 
             {/* ── Onboarding (Employee/Admin only) ─────────────────────── */}
             <Route path="/onboarding" element={
               session ? (
                 !userRole ? <Navigate to="/auth" replace /> :
-                (!onboardingComplete ? <Onboarding /> : <Navigate to="/" replace />)
+                (!onboardingComplete ? <Onboarding userId={session.user.id} /> : <Navigate to="/" replace />)
               ) : <Navigate to="/auth" replace />
             } />
 
