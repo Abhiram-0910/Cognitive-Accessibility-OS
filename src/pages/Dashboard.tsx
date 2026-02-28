@@ -61,8 +61,61 @@ export const Dashboard: React.FC<{ userId: string }> = ({ userId }) => {
   useCognitiveMonitor();
   useDemoSimulator(userId);
 
-  // States for Quick Actions
   const [showOSBridge, setShowOSBridge] = useState(false);
+  const [showNotifToast, setShowNotifToast] = useState(false);
+
+  // ── Audio player state (widget #8) ──────────────────────────────────────
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const focusAudioRef = useRef<OscillatorNode | null>(null);
+  const focusGainRef = useRef<GainNode | null>(null);
+
+  const toggleFocusAudio = useCallback(() => {
+    const store = useCognitiveStore.getState();
+    // Use the pre-warmed AudioContext from the global store
+    const ctx = (store as any).audioContext as AudioContext | undefined;
+    if (!ctx) return;
+
+    if (isAudioPlaying) {
+      // Fade out and stop
+      if (focusGainRef.current) {
+        focusGainRef.current.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
+        setTimeout(() => {
+          focusAudioRef.current?.stop();
+          focusAudioRef.current?.disconnect();
+          focusAudioRef.current = null;
+          focusGainRef.current?.disconnect();
+          focusGainRef.current = null;
+        }, 350);
+      }
+      setIsAudioPlaying(false);
+    } else {
+      // Create 40 Hz carrier + 43 Hz tone (binaural 3 Hz beat)
+      if (ctx.state === 'suspended') ctx.resume();
+      const gainNode = ctx.createGain();
+      gainNode.gain.setValueAtTime(0, ctx.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.5);
+      gainNode.connect(ctx.destination);
+
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(40, ctx.currentTime); // Alpha 40 Hz
+      osc.connect(gainNode);
+      osc.start();
+
+      focusAudioRef.current = osc;
+      focusGainRef.current = gainNode;
+      setIsAudioPlaying(true);
+    }
+  }, [isAudioPlaying]);
+
+  // Cleanup oscillator on unmount
+  useEffect(() => {
+    return () => {
+      focusAudioRef.current?.stop();
+      focusAudioRef.current?.disconnect();
+      focusGainRef.current?.disconnect();
+    };
+  }, []);
 
   // Real user profile from Supabase Auth
   const [userMeta, setUserMeta] = useState<{ fullName: string; avatarUrl: string | null } | null>(null);
@@ -135,30 +188,30 @@ export const Dashboard: React.FC<{ userId: string }> = ({ userId }) => {
           </div>
           {/* Navigation Links */}
           <nav className="flex flex-col gap-2">
-            <a className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-slate-50 text-[#197fe6] font-medium transition-colors" href="#">
+            <Link to="/dashboard" className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-slate-50 text-[#197fe6] font-medium transition-colors">
               <span className="material-symbols-outlined font-[FILL]">grid_view</span>
               <span className="text-sm">Dashboard</span>
-            </a>
-            <a className="flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium transition-colors" href="#">
+            </Link>
+            <Link to="/memory" className="flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium transition-colors">
               <span className="material-symbols-outlined">monitoring</span>
-              <span className="text-sm">Cognitive Stats</span>
-            </a>
-            <a className="flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium transition-colors" href="#">
+              <span className="text-sm">Memory & Context</span>
+            </Link>
+            <Link to="/acoustic-sandbox" className="flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium transition-colors">
               <span className="material-symbols-outlined">headphones</span>
               <span className="text-sm">Focus Tools</span>
-            </a>
-            <a className="flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium transition-colors" href="#">
+            </Link>
+            <Link to="/body-doubling" className="flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium transition-colors">
               <span className="material-symbols-outlined">schedule</span>
-              <span className="text-sm">Sessions</span>
-            </a>
+              <span className="text-sm">Body Doubling</span>
+            </Link>
           </nav>
         </div>
         {/* Bottom Links */}
         <div className="flex flex-col gap-2">
-          <a className="flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium transition-colors" href="#">
+          <Link to="/reading" className="flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium transition-colors">
             <span className="material-symbols-outlined">settings</span>
             <span className="text-sm">Settings</span>
-          </a>
+          </Link>
           <div className="pt-4 mt-2 border-t border-slate-100 flex items-center gap-3">
             {userMeta?.avatarUrl ? (
               <img alt="User Profile" className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm" src={userMeta.avatarUrl} />
@@ -184,10 +237,18 @@ export const Dashboard: React.FC<{ userId: string }> = ({ userId }) => {
               Your cognitive load is {cognitiveLoadScore < 40 ? 'optimal' : cognitiveLoadScore < 75 ? 'elevated' : 'high'} for work today.
             </p>
           </div>
-          <div className="flex items-center gap-4">
-            <button className="size-12 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-[#197fe6] hover:border-[#197fe6] transition-all shadow-sm">
+          <div className="flex items-center gap-4 relative">
+            <button
+              onClick={() => { setShowNotifToast(true); setTimeout(() => setShowNotifToast(false), 2500); }}
+              className="size-12 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-[#197fe6] hover:border-[#197fe6] transition-all shadow-sm"
+            >
               <span className="material-symbols-outlined">notifications</span>
             </button>
+            {showNotifToast && (
+              <div className="absolute top-14 right-0 bg-slate-800 text-white text-xs px-3 py-2 rounded-xl shadow-xl whitespace-nowrap z-50">
+                🔔 Notifications — coming soon
+              </div>
+            )}
             <button onClick={() => setCrisisActive(true)} className="h-12 px-6 rounded-full bg-slate-900 text-white font-medium shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-2">
               <span className="material-symbols-outlined text-lg">play_arrow</span>
               Start Focus Session
@@ -344,29 +405,37 @@ export const Dashboard: React.FC<{ userId: string }> = ({ userId }) => {
             </div>
           </div>
 
-          {/* 8. Music / Audio Player (Wide) */}
+          {/* 8. Music / Audio Player — bound to real AudioContext ──────────── */}
           <div className="bg-white border border-slate-100 shadow-sm rounded-3xl overflow-hidden transition-all duration-300 hover:shadow-md col-span-1 md:col-span-2 lg:col-span-2 p-4 flex items-center gap-4">
-            <div className="size-16 rounded-xl overflow-hidden shrink-0 relative">
-              <img alt="Abstract sound wave art" className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCbDYkotDnHhrfXKYW540_iYPZf_3a0ewWNM76nJzPqzzzkwSljgKix16_-SpLnp7IjDaImAAOVYA6Re-jjCJ_ckv4i-GVoqOmjnH5py00hFMvUG_Tg3JqolDliBfhzF02sTPriRq4g9st8Az9489ePyYxgWiq6iqd9Z5b0HstXImtkx86TYwqRSGuuAs8fpcLfrkkP6hdaE9CDY88YVZlHjX9kWwE-HGEydRhaElUFeevY3E2IBZbdAcM7HSKzkCGUN06dXfu0SlA" />
-              <div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                <span className="material-symbols-outlined text-white">play_circle</span>
-              </div>
+            <div className="size-16 rounded-xl overflow-hidden shrink-0 relative bg-gradient-to-br from-indigo-600 to-blue-500 flex items-center justify-center">
+              <span className="material-symbols-outlined text-white text-3xl">graphic_eq</span>
             </div>
             <div className="flex-1 min-w-0">
               <h4 className="text-sm font-bold text-slate-900 truncate">Deep Focus: Alpha Binaural 40Hz</h4>
-              <p className="text-xs text-slate-500 truncate">NeuroAdaptive Audio Engine</p>
+              <p className="text-xs text-slate-500 truncate">NeuroAdaptive Audio Engine{isAudioPlaying ? ' · Playing' : ' · Stopped'}</p>
               <div className="flex items-center gap-3 mt-2">
-                <span className="text-[10px] text-slate-400 font-mono">12:40</span>
                 <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="w-1/3 h-full bg-[#197fe6] rounded-full"></div>
+                  {isAudioPlaying && (
+                    <motion.div
+                      initial={{ width: '0%' }}
+                      animate={{ width: '100%' }}
+                      transition={{ duration: 600, ease: 'linear', repeat: Infinity }}
+                      className="h-full bg-[#197fe6] rounded-full"
+                    />
+                  )}
+                  {!isAudioPlaying && <div className="w-0 h-full bg-[#197fe6] rounded-full" />}
                 </div>
-                <span className="text-[10px] text-slate-400 font-mono">-45:20</span>
+                <span className="text-[10px] text-slate-400 font-mono">{isAudioPlaying ? '∞' : '--:--'}</span>
               </div>
             </div>
             <div className="flex items-center gap-1 pr-2">
-              <button className="size-8 flex items-center justify-center text-slate-400 hover:text-slate-900"><span className="material-symbols-outlined text-lg">skip_previous</span></button>
-              <button className="size-10 flex items-center justify-center bg-slate-900 text-white rounded-full shadow-md hover:bg-[#197fe6] transition-colors"><span className="material-symbols-outlined">pause</span></button>
-              <button className="size-8 flex items-center justify-center text-slate-400 hover:text-slate-900"><span className="material-symbols-outlined text-lg">skip_next</span></button>
+              <button
+                onClick={toggleFocusAudio}
+                className="size-10 flex items-center justify-center bg-slate-900 text-white rounded-full shadow-md hover:bg-[#197fe6] transition-colors"
+                title={isAudioPlaying ? 'Pause 40Hz binaural' : 'Play 40Hz binaural'}
+              >
+                <span className="material-symbols-outlined">{isAudioPlaying ? 'pause' : 'play_arrow'}</span>
+              </button>
             </div>
           </div>
 

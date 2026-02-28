@@ -78,6 +78,22 @@ export const BodyDoubling: React.FC = () => {
   const jitsiApiRef = useRef<any>(null);
   const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ambientAudioRef = useRef<HTMLAudioElement | null>(null);
+  /**
+   * StrictMode Guard — React 18 double-invokes effects in dev mode.
+   * Without this, two JitsiMeetExternalAPI instances would be created
+   * simultaneously on the first render, causing iframe duplication and
+   * DOM errors.
+   */
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      // Explicit dispose on unmount so the iframe is torn down cleanly
+      jitsiApiRef.current?.dispose();
+      jitsiApiRef.current = null;
+    };
+  }, []);
 
   // ── Supabase Realtime Presence ──────────────────────────────────────────
   useEffect(() => {

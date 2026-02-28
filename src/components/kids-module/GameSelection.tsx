@@ -193,76 +193,9 @@ export default function GameSelection() {
                   </div>
                 </motion.div>
 
-                {/* Card 3: Stories */}
-                <motion.div 
-                  whileHover={{ y: -4 }}
-                  className="group flex flex-col gap-4 bg-[#fffdf5] dark:bg-[#2d2616] p-4 rounded-xl border border-[#f3f0e7] dark:border-[#3d341e] hover:shadow-md transition-all cursor-pointer"
-                >
-                  <div className="w-full bg-center bg-no-repeat aspect-[4/3] bg-cover rounded-lg overflow-hidden relative" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuA7ndBsCjk_Sy9_r_TrzTqz_M8iCoHPlcsqsnTaZ1y_7VKZapPUdyVe9Ko80qKuhSOFqpMbbi58d60-xFHJEtEb2JnhpT_fRdDlcbsf8xVTKc6SM9qRNLqyGAJg9edoczWh9Dk4poGGATHihSAyxEeIl_k77FlQhaUgvZRGxFmDEtKGZbjBWLpC6iEHCBBTbi2zf_klU5aB9aNDX2SJiFAZl9k2_BuxJ-PKDJlXj21zMVbbZBTsy5Z9Osy8YoagrawoLQkGAtGwV_M")' }}>
-                    <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
-                    <div className="absolute top-3 right-3 bg-white/90 dark:bg-black/60 backdrop-blur rounded-full p-2 text-[#eebd2b] shadow-sm">
-                      <span className="material-symbols-outlined block">auto_stories</span>
-                    </div>
-                  </div>
-                  <div className="px-2 pb-2">
-                    <h4 className="text-[#422006] dark:text-yellow-50 text-xl font-bold leading-tight mb-1">Story World</h4>
-                    <p className="text-[#9a864c] dark:text-yellow-200/70 text-sm font-medium">Read calming stories together</p>
-                  </div>
-                </motion.div>
-
-                {/* Card 4: Music (Extra) */}
-                <motion.div 
-                  whileHover={{ y: -4 }}
-                  className="group flex flex-col gap-4 bg-[#fffdf5] dark:bg-[#2d2616] p-4 rounded-xl border border-[#f3f0e7] dark:border-[#3d341e] hover:shadow-md transition-all cursor-pointer"
-                >
-                  <div className="w-full bg-center bg-no-repeat aspect-[4/3] bg-cover rounded-lg overflow-hidden relative" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuD0ojLX0BdeIrnxrGjGrJDZXCuydQR1TEdUuGSxdxT4pMQXyoGnGq61J1uQY0B9bOE9uNPFzRrSrcW6BOqNIKwCSjLSOPNrQRnU1S0I3U73AnuwMvRRY3whlzzF9vOWTKk8_us025thatTqiKEpsGzxZNXb-7FugfWNiHWPR9e46yvsd5m4c51ua_V2mCH49df7NoEMouoUmnolpuomfXQUbYJZm8AGdL1W4wGUA37HL_eBZxGY2NuemanJoyr6PBg2u-Ue5NSTNGQ")' }}>
-                    <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
-                    <div className="absolute top-3 right-3 bg-white/90 dark:bg-black/60 backdrop-blur rounded-full p-2 text-[#eebd2b] shadow-sm">
-                      <span className="material-symbols-outlined block">music_note</span>
-                    </div>
-                  </div>
-                  <div className="px-2 pb-2">
-                    <h4 className="text-[#422006] dark:text-yellow-50 text-xl font-bold leading-tight mb-1">Calm Sounds</h4>
-                    <p className="text-[#9a864c] dark:text-yellow-200/70 text-sm font-medium">Listen to rain, forest, and ocean</p>
-                  </div>
-                </motion.div>
-
-                {/* Card 5: Garden (Extra) */}
-                <motion.div 
-                  whileHover={{ y: -4 }}
-                  className="group flex flex-col gap-4 bg-[#fffdf5] dark:bg-[#2d2616] p-4 rounded-xl border border-[#f3f0e7] dark:border-[#3d341e] hover:shadow-md transition-all cursor-pointer"
-                >
-                  <div className="w-full bg-center bg-no-repeat aspect-[4/3] bg-cover rounded-lg overflow-hidden relative" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuBDu7r9klunnZ7GVP4PYrrF-WmH_XYj8BMM5KAIUlxbz0R6fb6_Fe4JCMjC9kLhiNn3PhuD5udmFaiBu7oL80coyhjCHTp9xzAOrCxbf5l2GUwYstQ-seiUK0fSKeeereRLRXXjKOqqANqx-495xpFkPe0ahmYEYnv5l2Znw_8RaK4cyGgQVZABN27eE943wYNFfYwA9RZFyhqVKcSbXFJfC-EdN0YYyPSoJgyUBX9LYw_3ekx4pvfk_ZbJDSYJKEVjFb2Vl2QW3Xk")' }}>
-                    <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
-                    <div className="absolute top-3 right-3 bg-white/90 dark:bg-black/60 backdrop-blur rounded-full p-2 text-[#eebd2b] shadow-sm">
-                      <span className="material-symbols-outlined block">potted_plant</span>
-                    </div>
-                  </div>
-                  <div className="px-2 pb-2">
-                    <h4 className="text-[#422006] dark:text-yellow-50 text-xl font-bold leading-tight mb-1">Tiny Garden</h4>
-                    <p className="text-[#9a864c] dark:text-yellow-200/70 text-sm font-medium">Grow your own digital plants</p>
-                  </div>
-                </motion.div>
-
-                {/* Card 6: Sensory (Extra) */}
-                <motion.div 
-                  whileHover={{ y: -4 }}
-                  className="group flex flex-col gap-4 bg-[#fffdf5] dark:bg-[#2d2616] p-4 rounded-xl border border-[#f3f0e7] dark:border-[#3d341e] hover:shadow-md transition-all cursor-pointer"
-                >
-                  <div className="w-full bg-center bg-no-repeat aspect-[4/3] bg-cover rounded-lg overflow-hidden relative" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuCtDVrxMJHPmuSmV9ttxmAcO-eZgaroqWOHpFcE-RVp9L93AuqkJYquzAJPMBNGjSwdS297qIes4VGGZnJjA6EXsZNsEi3PFrGO46Z-nmLEwhFKfkPzHdw4HklRJjr8D0rPDxzvlpus20SfT-NKMEWNxJhURcOpfBcv0QMpMJ2s6rJwm3QEt04vEC23KqLHeq8lO4plXJcvFDGsn-fuz2mBanDLdDk_tsGbT5II4Muwxuus-WryVnImWuourMbjPvVblVTIDy3u4ro")' }}>
-                    <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
-                    <div className="absolute top-3 right-3 bg-white/90 dark:bg-black/60 backdrop-blur rounded-full p-2 text-[#eebd2b] shadow-sm">
-                      <span className="material-symbols-outlined block">bubble_chart</span>
-                    </div>
-                  </div>
-                  <div className="px-2 pb-2">
-                    <h4 className="text-[#422006] dark:text-yellow-50 text-xl font-bold leading-tight mb-1">Bubble Pop</h4>
-                    <p className="text-[#9a864c] dark:text-yellow-200/70 text-sm font-medium">Pop bubbles for fun sounds</p>
-                  </div>
-                </motion.div>
-                
               </div>
             </div>
+
 
             {/* Footer / Quick Settings */}
             <div className="mt-8 flex justify-between items-center py-6 border-t border-[#f3f0e7] dark:border-[#3d341e]">

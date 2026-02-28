@@ -13,6 +13,7 @@ jobs:
     steps:
       - name: Ping Supabase Edge Function
         run: |
-          curl --retry 3 --retry-delay 5 --fail -X POST "${{ secrets.SUPABASE_EDGE_FUNCTION_URL }}/storage-cleaner" \
+          curl --retry 5 --retry-connrefused --retry-delay 3 --max-time 30 --fail \
+          -X POST "${{ secrets.SUPABASE_EDGE_FUNCTION_URL }}/storage-cleaner" \
           -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
           -H "Content-Type: application/json"
