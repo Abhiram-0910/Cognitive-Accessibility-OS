@@ -24,11 +24,20 @@ import { Camera, Play, Trophy, ArrowLeft, Clock, Heart } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fetchQuizQuestions } from '../../agents/gameContentAgent';
 import { BiometricVisionEngine, type EmotionMetrics } from '../../lib/biometrics/faceMesh';
+import { useCognitiveStore } from '../../stores/cognitiveStore';
 
 import TimerBar from './TimerBar';
 import useSessionId from '../../hooks/kids/useSessionId';
 import useWebcam from '../../hooks/kids/useWebcam';
 import useCapture from '../../hooks/kids/useCapture';
+
+// ─── Confusion Pause Constants ─────────────────────────────────────────────────
+/** Frustration OR tension above this triggers a confusion pause. */
+const CONFUSION_PAUSE_THRESHOLD = 70;
+/** Duration (ms) the pause overlay stays up before auto-resuming. */
+const CONFUSION_PAUSE_DURATION_MS = 5_000;
+/** Minimum gap (ms) between consecutive confusion pauses (cooldown). */
+const CONFUSION_PAUSE_COOLDOWN_MS = 15_000;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Answer { text: string; correct: boolean; }
@@ -184,21 +193,56 @@ export default function Game() {
   // Singleton engine ref
   const visionEngineRef = useRef<BiometricVisionEngine | null>(null);
 
+  // ── Confusion Pause (useCognitiveStore-driven) ───────────────────────────────
+  const [confusionPauseActive, setConfusionPauseActive] = useState(false);
+  const confusionCooldownRef = useRef<number>(0);
+  // Read real-time ML metrics from the global cognitive store
+  const storeMetrics = useCognitiveStore(s => s.metrics);
+
+  const handleConfusionPause = useCallback(() => {
+    const now = Date.now();
+    if (now - confusionCooldownRef.current < CONFUSION_PAUSE_COOLDOWN_MS) return;
+    confusionCooldownRef.current = now;
+    setConfusionPauseActive(true);
+    setTimerPaused(true);
+    setTimeout(() => {
+      setConfusionPauseActive(false);
+      setTimerPaused(false);
+    }, CONFUSION_PAUSE_DURATION_MS);
+  }, []);
+
+  // Watch store metrics — trigger pause if frustration or tension spikes while playing
+  useEffect(() => {
+    if (!hasStarted || showEndScreen || interventionActive) return;
+    const { frustration = 0, tension = 0 } = (storeMetrics as any);
+    if (frustration > CONFUSION_PAUSE_THRESHOLD || tension > CONFUSION_PAUSE_THRESHOLD) {
+      handleConfusionPause();
+    }
+  }, [storeMetrics, hasStarted, showEndScreen, interventionActive, handleConfusionPause]);
+
   // ── Fetch questions (Gemini first, Supabase fallback) ─────────────────────
   useEffect(() => {
     if (!localAge) return;
     fetchQuizQuestions('emotions, animals, and everyday life', ageForGemini)
-      .then(qs => { setQuestions(qs); setIsLoading(false); })
+      .then(qs => { 
+        // Shuffle the answers so the correct one isn't always first
+        const shuffledQs = qs.map(q => ({
+          ...q,
+          answers: [...q.answers].sort(() => Math.random() - 0.5)
+        }));
+        setQuestions(shuffledQs); 
+        setIsLoading(false); 
+      })
       .catch(() => setIsLoading(false));
   }, [localAge, ageForGemini]);
 
-  // ── Countdown timer (pause-aware) ─────────────────────────────────────────
+  // ── Countdown timer (pause-aware: Vision Engine distress OR store confusion pause) ──
   useEffect(() => {
-    if (!hasStarted || timerPaused) return;
+    if (!hasStarted || timerPaused || confusionPauseActive) return;
     if (timeRemaining <= 0) { endGame(); return; }
     const t = setInterval(() => setTimeRemaining(p => p - 1), 1000);
     return () => clearInterval(t);
-  }, [hasStarted, timeRemaining, timerPaused]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hasStarted, timeRemaining, timerPaused, confusionPauseActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Start BiometricVisionEngine when game starts ──────────────────────────
   useEffect(() => {
@@ -267,17 +311,19 @@ export default function Game() {
     triggerConfetti();
   }, [stopWebcam]);
 
-  const startCapture = () => {
+  const startCapture = async () => {
     const isTouch = navigator.maxTouchPoints > 0;
     
-    // Log hardware context to telemetry
-    supabase.from('telemetry_events').insert({
-      event_type: 'game_start',
-      metadata: { 
-        isTouchDevice: isTouch,
-        userAgent: navigator.userAgent
-      },
-    }).catch(err => console.warn('[Game] Telemetry log failed:', err));
+    // Log hardware context to telemetry — async/await so no .catch() on non-Promise
+    try {
+      const { error } = await supabase.from('telemetry_events').insert({
+        event_type: 'game_start',
+        metadata: { isTouchDevice: isTouch, userAgent: navigator.userAgent },
+      });
+      if (error) console.warn('[Game] Telemetry log skipped:', error.message);
+    } catch (err) {
+      console.warn('[Game] Telemetry log failed:', err);
+    }
 
     const shuffled = [...questions].sort(() => Math.random() - 0.5);
     setQuestions(shuffled);
@@ -364,16 +410,17 @@ export default function Game() {
   // Colour for the emotion indicator pill
   const emotionPillColour =
     emotions.isCalibrating ? 'bg-slate-500/80 text-white animate-pulse'
-    : emotions.frustration >= 80 || emotions.confusion >= 80
-      ? 'bg-rose-500/80 text-white'
-      : emotions.joy >= 50
-      ? 'bg-emerald-500/80 text-white'
-      : 'bg-white/10 text-white/60';
+    : emotions.frustration >= 80 ? 'bg-red-500/80 text-white'
+    : emotions.frustration >= 50 ? 'bg-orange-500/80 text-white'
+    : emotions.confusion >= 60 ? 'bg-indigo-500/80 text-white'
+    : emotions.joy >= 50 ? 'bg-emerald-500/80 text-white'
+    : 'bg-white/10 text-white/60';
 
   const dominantEmotion =
     emotions.isCalibrating ? '⌛ Calibrating...'
-    : emotions.frustration >= 80 ? '😤 Frustrated'
-    : emotions.confusion >= 80 ? '🤔 Confused'
+    : emotions.frustration >= 80 ? '😡 Angry'
+    : emotions.frustration >= 50 ? '😢 Sad'
+    : emotions.confusion >= 60 ? '🤔 Confused'
     : emotions.joy >= 50 ? '😊 Happy'
     : '😐 Neutral';
 
@@ -602,6 +649,9 @@ export default function Game() {
             </motion.div>
           )}
         </AnimatePresence>
+        
+        {/* Hidden canvas required by useCapture for rendering and encoding frames */}
+        <canvas ref={canvasRef} width={640} height={480} style={{ display: 'none' }} />
       </div>
     </div>
   );

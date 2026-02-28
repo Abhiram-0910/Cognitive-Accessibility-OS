@@ -122,7 +122,7 @@ export async function fetchQuizQuestions(
     const res = await fetch(`${BACKEND_URL}/api/agents/generate-game-content`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameType: 'quiz', theme, count: 5, age }),
+      body: JSON.stringify({ gameType: 'quiz', theme, count: 5, age, seed: Math.random() }),
       signal: AbortSignal.timeout(4_000), // Strict 4s timeout prevents kids waiting on LLM
     });
 
@@ -178,7 +178,7 @@ export async function fetchSpellingQuestions(
     const res = await fetch(`${BACKEND_URL}/api/agents/generate-game-content`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameType: 'spelling', theme, count: 5, age }),
+      body: JSON.stringify({ gameType: 'spelling', theme, count: 5, age, seed: Math.random() }),
       signal: AbortSignal.timeout(4_000), // Strict 4s timeout prevents kids waiting on LLM
     });
 

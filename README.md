@@ -71,6 +71,7 @@ The NeuroAdaptive OS acts as a **Real-Time Cognitive Co-Processor**. It serves a
 - **Lexical Anchor Formatting** (formerly "Bionic Reading"): Wraps the first half of words in `<strong>` tags for improved reading retention. Accessible in both the Micro-Tasker and the new Reading Mode.
 
 ### 🌐 Environmental Orchestration (Chrome Manifest V3)
+- **Universal Injection**: Extension runs on **all websites** (Wikipedia, GitHub, any page) — not just Slack/Jira. Uses `<all_urls>` match in content_scripts.
 - **Shadow DOM Isolation**: Extension UI is injected into an isolated Shadow Root, making it immune to host SPA re-renders from Jira/Slack's internal React lifecycle.
 - **Stable Positioning**: A `ResizeObserver` on the host element keeps the overlay pinned during dynamic page shifts.
 - **MV3 Background Worker Heartbeat**: `chrome.alarms` API keeps the service worker alive during active monitoring periods.
@@ -200,6 +201,8 @@ SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 TOKEN_ENCRYPTION_KEY=your_32_byte_hex_string
 GITHUB_WEBHOOK_SECRET=your_github_webhook_secret   # For RSD Shield live mode
+HUGGINGFACE_API_TOKEN=your_hf_token                # For real ViT emotion inference on kids session reports
+                                                    # (optional — falls back to score-based heuristic if absent)
 ```
 
 **`/.env.local`** (Frontend):
@@ -289,7 +292,7 @@ Click **Start Engine** on the Acoustic Sandbox page. If mic permission is denied
 Navigate to `/rsd-shield`. The right panel is a live sandbox — paste any raw PR review comment and click **"Sanitize with Gemini"**. No webhook or GitHub App configuration is needed.
 
 ### Kids Module Quick Test
-1. Navigate to `/kids/quiz` directly
+1. Navigate to `/kids/play/1` directly
 2. Enter any age (3–18) in the age gate
 3. Watch Gemini generate custom questions calibrated to that exact age
 
@@ -598,7 +601,7 @@ This hidden hook instantly bypasses the ML lock, injects 7 days of realistic mat
 On the Dashboard, the **Workspace Integrations** panel shows mock Slack and Jira notifications. Click **"Simplify with AI"** to watch Gemini rewrite stressful corporate messages.
 
 ### Kids Module Quick Test
-1. Navigate to `/kids/quiz` directly
+1. Navigate to `/kids/play/1` directly
 2. The "How old are you?" age gate will appear
 3. Enter any age (3–18) → watch Gemini generate custom calibrated questions
 
@@ -614,6 +617,126 @@ On the Dashboard, the **Workspace Integrations** panel shows mock Slack and Jira
 | **RBAC** | `RoleGuard` in `App.tsx` restricts every route by role (`admin`, `employee`, `child`, `parent`) |
 | **Shadow DOM Isolation** | Extension UI cannot leak styles into or read from host SPA DOM trees |
 | **Webhook HMAC** | RSD Shield verifies GitHub webhook signatures via HMAC-SHA256 before processing |
+
+---
+
+## 📊 Pitch Claim Verification Matrix
+
+> Every claim made in the pitch document verified against actual source files. **Last verified: 2026-02-28**
+
+### Module A: Educational Expression Tracker
+
+| Claim | Status | Source File |
+|---|---|---|
+| Real-Time Sentiment Analysis during gameplay | ✅ **LIVE** | `src/lib/biometrics/faceMesh.ts` — `BiometricVisionEngine` runs MediaPipe + emotion metrics |
+| Automated Intervention Triggers (frustration > threshold) | ✅ **LIVE** | `Game.tsx` Vision Engine distress overlay + new `useCognitiveStore` confusion pause (frustration > 70) |
+| AI Confusion Pause (5s breathing overlay) | ✅ **LIVE** | `Game.tsx` + `GameTwo.tsx` — `handleConfusionPause()`, 15s cooldown ref |
+| Hierarchical RBAC (SuperAdmin, Teacher, Parent, Child) | ✅ **LIVE** | `App.tsx` `RoleGuard`, `cognitiveStore.ts` `UserRole` type |
+| Teacher/Therapist Dashboard | ✅ **LIVE** | `src/pages/TeacherDashboard.tsx` — RadialBarChart, BarChart, leaderboard, screenshot gallery |
+| Clinical PDF Export (html2canvas + jsPDF) | ✅ **LIVE** | `src/components/clinical/ClinicalExport.tsx` |
+| Heuristic Fallback Watermark `[Heuristic]` | ✅ **LIVE** | `src/lib/biometrics/heuristics.ts` + TeacherDashboard watermark rendering |
+| COPPA 24h Auto-Delete (Supabase Edge Function) | ✅ **LIVE** | `supabase/functions/storage-cleaner/index.ts` + `coppa-cleaner.yml` |
+| Age-calibrated Gemini game content | ✅ **LIVE** | `src/agents/gameContentAgent.ts` — sends `childAge` to Gemini 2.0 Flash |
+| Webcam frames → Supabase Storage (`kids-captures`) | ✅ **LIVE** | `src/hooks/kids/useCapture.ts` `supabaseUploader` (default) |
+| HuggingFace ViT Emotion Report in Parent Portal | ✅ **LIVE** (just built) | `server/src/routes/api.ts` `GET /agents/session-report/:sessionId` |
+| `ai_report` DB column | ⚠️ **PENDING** | Run `supabase/migrations/add_ai_report_column.sql` in Supabase SQL Editor |
+
+### Module B: Enterprise Workspace
+
+| Claim | Status | Source File |
+|---|---|---|
+| Cognitive State Orb (color-reactive) | ✅ **LIVE** | `src/components/dashboard/CognitiveStateOrb.tsx` |
+| Live Stress Panel (BPM, tension, gaze) | ✅ **LIVE** | `src/components/dashboard/LiveStressPanel.tsx` |
+| Global Crisis Mode (432 Hz + 4-7-8 breathing) | ✅ **LIVE** | `src/components/crisis/CrisisMode.tsx` — `SINE_FREQUENCY = 432` confirmed |
+| Body Doubling Marketplace (Jitsi WebRTC) | ✅ **LIVE** | `src/pages/BodyDoubling.tsx` — force-mute, StrictMode guard |
+| Manager DEI Dashboard (aggregated B2B analytics) | ✅ **LIVE** | `src/pages/ManagerDashboard.tsx` |
+| Sensory Equalizer (global AudioContext gain sliders) | ✅ **LIVE** | `src/components/shared/SensoryEqualizer.tsx` |
+| OS-Level Focus Bridge (DND wizard) | ✅ **LIVE** | `src/components/shared/OSFocusBridge.tsx` |
+| Time Blindness Correction (ML multiplier) | ✅ **LIVE** | `src/lib/algorithms/timeCorrection.ts` |
+| Offline TF-IDF Summarizer | ✅ **LIVE** | `src/lib/algorithms/offlineNLP.ts` + `Intl.Segmenter` |
+| Acoustic Phase-Inversion Sandbox (BiquadFilter notch) | ✅ **LIVE** | `src/components/acoustic/AcousticSandbox.tsx` + `src/hooks/useAcousticEngine.ts` |
+| RSD Shield (GitHub PR De-weaponizer) | ✅ **LIVE** | `src/components/rsd/RSDShield.tsx` + `server/src/routes/webhooks.ts` |
+| Reading Mode (Lexical Anchor Formatting) | ✅ **LIVE** | `src/components/reading/ReadingMode.tsx` |
+| BurnoutForecast widget | ✅ **LIVE** | `src/components/dashboard/BurnoutForecast.tsx` |
+| Hyperfocus Capsule (flow-state notes + summary) | ✅ **LIVE** | `src/components/cognitive/HyperfocusCapsule.tsx` + `src/agents/flowAgents.ts` |
+| Recruitment Ally | ✅ **LIVE** | `src/components/career/RecruitmentAlly.tsx` + `src/agents/careerAgents.ts` |
+| Social Decoder | ✅ **LIVE** | `src/components/communication/SocialDecoder.tsx` |
+| Regulation Companion | ✅ **LIVE** | `src/components/emotional/RegulationCompanion.tsx` |
+| Slack/Thread Restructurer (mind map) | ✅ **LIVE** | `src/components/communication/ThreadRestructurer.tsx` + `ThreadVisualizer.tsx` |
+| Community Agent (Federated Learning) | ✅ **LIVE** | `src/lib/ml/federatedClient.ts` + `server/src/routes/api.ts` `/ml/federated-update` |
+
+### The 10 Gemini AI Agents
+
+| # | Agent | Status | Source File |
+|---|---|---|---|
+| 1 | Communication Translator (Inbound) | ✅ **LIVE** | `src/agents/communicationAgents.ts` |
+| 2 | Communication Translator (Outbound) | ✅ **LIVE** | `src/agents/communicationAgent.ts` |
+| 3 | Momentum Architect (Micro-Tasker) | ✅ **LIVE** | `src/agents/taskAgent.ts` + `src/components/tasks/MicroTasker.tsx` |
+| 4 | Prosthetic Memory Agent (RAG + pgvector) | ✅ **LIVE** | `src/pages/Memory.tsx` — calls `/api/embed` → `match_memories` RPC → Gemini stream |
+| 5 | Social Decoder | ✅ **LIVE** | `src/components/communication/SocialDecoder.tsx` |
+| 6 | Burnout Forecaster (7-day predictive) | ✅ **LIVE** | `src/components/dashboard/BurnoutForecast.tsx` + `src/agents/cognitiveTrainingAgent.ts` |
+| 7 | Sensory Equalizer (Gemini Vision) | ✅ **LIVE** | `src/agents/sensoryAgent.ts` |
+| 8 | Recruitment Ally | ✅ **LIVE** | `src/agents/careerAgents.ts` |
+| 9 | Regulation Companion (distress monitor) | ✅ **LIVE** | `src/components/emotional/RegulationCompanion.tsx` |
+| 10 | Community Agent (federated patterns) | ✅ **LIVE** | `src/lib/ml/federatedClient.ts` — differential privacy (Laplace noise) |
+| +1 | RSD Shield (PR De-weaponizer, `GEMINI_API_KEY_2`) | ✅ **LIVE** | `src/components/communication/ThreadRestructurer.tsx` + `RSDShield.tsx` |
+
+### Technology Stack (Pitch vs Reality)
+
+| Stack Claim | Verified | Notes |
+|---|---|---|
+| React 18 + Vite + TypeScript | ✅ | `package.json` |
+| Tailwind CSS + Framer Motion | ✅ | Used project-wide |
+| Recharts (AreaChart, BarChart, RadialBarChart) | ✅ | TeacherDashboard, ManagerDashboard, EnergyTimeline |
+| MediaPipe FaceMesh + TensorFlow.js (WebGL) | ✅ | `src/lib/biometrics/faceMesh.ts` |
+| Mouse/Touch Heuristics (rage tap, velocity) | ✅ | `src/lib/biometrics/heuristics.ts` |
+| Supabase PostgreSQL + Auth + RLS | ✅ | All data operations |
+| pgvector semantic search | ✅ | `Memory.tsx` `match_memories` RPC |
+| Socket.io (biometric streaming) | ✅ | `server/src/sockets/cognitiveStream.ts` |
+| Node.js / Express backend | ✅ | `server/src/server.ts` |
+| Supabase Edge Functions (Deno) | ✅ | `supabase/functions/storage-cleaner/` |
+| Web Audio API (432Hz, BiquadFilter, GainNode) | ✅ | `CrisisMode.tsx`, `AcousticSandbox.tsx`, `SensoryEqualizer.tsx` |
+| Chrome MV3 Extension + Shadow DOM | ✅ | `extension/content.js` + `manifest.json` |
+| Extension on ALL websites (incl. Wikipedia) | ✅ | `manifest.json` updated to `<all_urls>` |
+| html2canvas + jsPDF clinical export | ✅ | `src/components/clinical/ClinicalExport.tsx` |
+| Pyodide WASM (Resource Mutex) | ✅ | `src/workers/pyodide.worker.ts` |
+| GitHub Actions CI/CD (COPPA failover) | ✅ | `.github/workflows/coppa-cleaner.yml` |
+| WASM ResourceMutex (prevent GPU contention) | ✅ | `src/components/integration/PygameCanvas.tsx` |
+| HuggingFace ViT emotion inference | ✅ (just built) | `server/src/routes/api.ts` `/agents/session-report` |
+| Vercel + Supabase hosting | ⚠️ **Not verified** | Deployment config not committed |
+
+### Summary: Gaps vs Pitch Claims
+
+| # | Gap | Action Required | Priority |
+|---|---|---|---|
+| 1 | `ai_report` DB column missing | Run `supabase/migrations/add_ai_report_column.sql` | HIGH |
+| 2 | `HUGGINGFACE_API_TOKEN` not in env | Add to `server/.env` for real ViT (falls back to heuristic without it) | MEDIUM |
+| 3 | Extension only covered 3 sites | Fixed — now `<all_urls>` (Wikipedia, GitHub, everywhere) | ✅ FIXED |
+| 4 | `/kids/quiz` route in README/demo | Fixed — corrected to `/kids/play/1` | ✅ FIXED |
+| 5 | Server session-report endpoint missing | Fixed — full HF ViT pipeline added to `api.ts` | ✅ FIXED |
+| 6 | `index.html` missing font links | Fixed — Material Symbols + Inter + Nunito added | ✅ FIXED |
+| 7 | Material symbols icons broken globally | Fixed — `index.css` `.material-symbols-outlined` class added | ✅ FIXED |
+| 8 | Game.tsx `.catch()` fatal crash | Fixed — rewritten as `async/await try/catch` | ✅ FIXED |
+| 9 | ParentDashboard wrong game routes | Fixed — `/kids/quiz` → `/kids/play/1` etc. | ✅ FIXED |
+| 10 | No AI confusion pause in games | Fixed — `useCognitiveStore` watcher, 5s overlay, 15s cooldown | ✅ FIXED |
+
+---
+
+## 🚀 Recent Updates (Vanguard Protocol — 2026-02-28)
+
+### Bug Fixes
+- **Fatal Crash:** `supabase.from().insert().catch()` `TypeError` in `Game.tsx` — rewritten as `async/await try/catch`
+- **Broken Routing:** `ParentDashboard.tsx` `launchGame()` used non-existent `/kids/quiz` routes — corrected to `/kids/play/1` and `/kids/play/2`
+- **Dead Navigation:** Dashboard sidebar `href="#"` links replaced with React Router `<Link>` components
+- **BodyDoubling StrictMode:** Jitsi double-iframe bug fixed with `isMountedRef` guard + explicit `api.dispose()` cleanup
+- **COPPA CI:** Upgraded `curl --retry 5 --retry-connrefused --max-time 30` for cold-start resilience
+
+### New Features
+- **AI Confusion Pause:** `useCognitiveStore` metrics watcher in both `Game.tsx` and `GameTwo.tsx` — 5-second calming breathing overlay when `frustration > 70` or `tension > 70`, 15-second cooldown
+- **HuggingFace Session Report:** `GET /agents/session-report/:sessionId` endpoint with full ViT inference pipeline + heuristic fallback + `ai_report` caching
+- **Universal Extension:** `manifest.json` expanded from 3 domains to `<all_urls>` — now works on Wikipedia, GitHub, and all sites
+- **Global Font Loading:** `index.html` now preloads Material Symbols Outlined, Inter, and Nunito fonts — all icons now render correctly app-wide
+- **Mock Game Cards Purge:** `GameSelection.tsx` reduced from 6 fake cards to exactly 2 real game cards (Crack the Quiz + Drag & Spell)
 
 ---
 

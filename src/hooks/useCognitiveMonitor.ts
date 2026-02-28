@@ -96,7 +96,9 @@ export const useCognitiveMonitor = () => {
         videoEl.playsInline = true;
         
         await new Promise((resolve) => {
-          videoEl!.onloadedmetadata = () => resolve(true);
+          videoEl!.onloadedmetadata = () => {
+            videoEl!.play().catch(e => console.warn("Video play failed:", e)).finally(() => resolve(true));
+          };
         });
 
         visionEngine.current?.startAnalysis(

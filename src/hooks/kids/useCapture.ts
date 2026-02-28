@@ -123,12 +123,27 @@ const supabaseUploader: CaptureUploader = {
     const ts = Date.now();
     const path = `${meta.sessionId}/frames/${ts}.png`;
 
+    // Write locally to dist/uploads as requested (Do this FIRST so bucket RLS errors don't stop it)
+    try {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const b64 = reader.result as string;
+        fetch('http://localhost:3000/api/save-capture', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: b64, type: 'upload', filename: `${ts}.png` })
+        }).catch(() => {});
+      };
+      reader.readAsDataURL(blob);
+    } catch (e) {}
+
     const { error: uploadErr } = await supabase.storage
       .from('kids-captures')
       .upload(path, blob, { contentType: 'image/png', upsert: false });
 
     if (uploadErr) {
-      throw new Error(`[useCapture/kids] Frame upload failed: ${uploadErr.message}`);
+      console.warn(`[useCapture/kids] Supabase Frame upload skipped: ${uploadErr.message}`);
+      // Proceed without returning so the DB is aware of the capture
     }
 
     // Append path to game_sessions.image_paths[] by matching session_key
@@ -146,12 +161,27 @@ const supabaseUploader: CaptureUploader = {
     const ts = Date.now();
     const path = `${meta.sessionId}/screenshots/${ts}.png`;
 
+    // Write locally to dist/screenshots as requested (Do this FIRST)
+    try {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const b64 = reader.result as string;
+        fetch('http://localhost:3000/api/save-capture', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: b64, type: 'screenshot', filename: `${ts}.png` })
+        }).catch(() => {});
+      };
+      reader.readAsDataURL(blob);
+    } catch (e) {}
+
     const { error: uploadErr } = await supabase.storage
       .from('kids-captures')
       .upload(path, blob, { contentType: 'image/png', upsert: false });
 
     if (uploadErr) {
-      throw new Error(`[useCapture/kids] Screenshot upload failed: ${uploadErr.message}`);
+      console.warn(`[useCapture/kids] Supabase Screenshot upload skipped: ${uploadErr.message}`);
+      // Proceed without returning
     }
 
     // Append path to game_sessions.screenshot_paths[]

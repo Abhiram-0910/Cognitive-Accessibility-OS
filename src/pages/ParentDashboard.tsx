@@ -145,11 +145,11 @@ export default function ParentDashboard() {
   };
 
   // Navigate to a game, passing child profile info (including age for Gemini)
-  const launchGame = (child: ChildAccount, gameRoute: '/kids/quiz' | '/kids/spelling') => {
+  const launchGame = (child: ChildAccount, gameRoute: '/kids/play/1' | '/kids/play/2') => {
     navigate(gameRoute, {
       state: {
         username: child.child_name,
-        gameName: gameRoute === '/kids/quiz' ? 'Crack the Quiz' : 'Drag & Spell',
+        gameName: gameRoute === '/kids/play/1' ? 'Crack the Quiz' : 'Drag & Spell',
         childAge: child.age,  // ← passed to Gemini for age-calibrated content
       },
     });
@@ -355,14 +355,14 @@ export default function ParentDashboard() {
                   {/* Right: game launch buttons */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
-                      onClick={() => launchGame(child, '/kids/quiz')}
+                      onClick={() => launchGame(child, '/kids/play/1')}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/20 hover:bg-violet-500/40
                                  text-violet-300 text-xs font-semibold transition"
                     >
                       <Gamepad2 className="w-3.5 h-3.5" /> Quiz
                     </button>
                     <button
-                      onClick={() => launchGame(child, '/kids/spelling')}
+                      onClick={() => launchGame(child, '/kids/play/2')}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/40
                                  text-amber-300 text-xs font-semibold transition"
                     >
@@ -410,11 +410,10 @@ function SessionReportsList({ childAccounts }: { childAccounts: ChildAccount[] }
     if (!selectedChildId) return;
     const fetchSessions = async () => {
       setLoading(true);
-      const child = childAccounts.find(c => c.id === selectedChildId);
       const { data } = await supabase
         .from('game_sessions')
         .select('*')
-        .eq('child_name', child?.child_name)
+        .eq('child_id', selectedChildId)
         .order('completed_at', { ascending: false })
         .limit(10);
       setSessions(data || []);
@@ -422,6 +421,7 @@ function SessionReportsList({ childAccounts }: { childAccounts: ChildAccount[] }
     };
     fetchSessions();
   }, [selectedChildId, childAccounts]);
+
 
   const toggleSession = async (sessionId: string) => {
     if (expandedSession === sessionId) {

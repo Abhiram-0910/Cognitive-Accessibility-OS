@@ -77,6 +77,7 @@ function use432HzSine(isActive: boolean) {
       if (!ctx || ctx.state === 'closed') {
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
         ctx = new AudioContextClass();
+        if (ctx.state === 'suspended') ctx.resume();
       }
 
       // Check if browser blocked auto-play

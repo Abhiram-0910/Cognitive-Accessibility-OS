@@ -23,6 +23,7 @@
     "jspdf": "^4.2.0",
     "lucide-react": "^0.575.0",
     "mermaid": "^11.12.3",
+    "pdfjs-dist": "^5.4.624",
     "react": "^19.2.0",
     "react-confetti": "^6.4.0",
     "react-dom": "^19.2.0",

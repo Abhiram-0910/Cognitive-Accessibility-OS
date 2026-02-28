@@ -17,6 +17,7 @@ import { Unauthorized } from './pages/Unauthorized';
 import { AcousticSandbox } from './components/acoustic/AcousticSandbox';
 import { RSDShield } from './components/rsd/RSDShield';
 import { ReadingMode } from './components/reading/ReadingMode';
+import Settings from './pages/Settings';
 
 // Kids Module
 import ParentDashboard from './pages/ParentDashboard';
@@ -354,6 +355,14 @@ export default function App() {
               session ? (
                 <RoleGuard userRole={userRole} allowed={['employee', 'admin', 'child', 'parent']}>
                   <ReadingMode />
+                </RoleGuard>
+              ) : <Navigate to="/auth" replace />
+            } />
+
+            <Route path="/settings" element={
+              session ? (
+                <RoleGuard userRole={userRole} allowed={['employee', 'admin', 'child', 'parent']}>
+                  <Settings />
                 </RoleGuard>
               ) : <Navigate to="/auth" replace />
             } />

@@ -81,15 +81,15 @@ export const BodyDoubling: React.FC = () => {
   /**
    * StrictMode Guard — React 18 double-invokes effects in dev mode.
    * Without this, two JitsiMeetExternalAPI instances would be created
-   * simultaneously on the first render, causing iframe duplication and
-   * DOM errors.
+   * simultaneously on the first render.
    */
   const isMountedRef = useRef(true);
+
+  // Initialize once
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      // Explicit dispose on unmount so the iframe is torn down cleanly
       jitsiApiRef.current?.dispose();
       jitsiApiRef.current = null;
     };
@@ -121,6 +121,16 @@ export const BodyDoubling: React.FC = () => {
             });
           }
         }
+        
+        // --- INJECT DEMO USERS IF EMPTY FOR HACKATHON ---
+        if (users.length === 0 || (users.length === 1 && users[0].user_id === currentUserId)) {
+          users.push(
+            { user_id: 'demo_alex', status: 'looking_for_partner', online_at: new Date().toISOString(), classification: 'neurotypical', taskCategory: 'deep-work' },
+            { user_id: 'demo_sarah', status: 'looking_for_partner', online_at: new Date(Date.now() - 60000).toISOString(), classification: 'adhd', taskCategory: 'writing' },
+            { user_id: 'demo_jordan', status: 'looking_for_partner', online_at: new Date(Date.now() - 120000).toISOString(), classification: 'autism', taskCategory: currentTaskCategory }
+          );
+        }
+
         setOnlineUsers(users);
         setIsConnecting(false);
       })
@@ -142,16 +152,23 @@ export const BodyDoubling: React.FC = () => {
           const { data: { session } } = await supabase.auth.getSession();
           const userId = session?.user?.id || `guest_${Math.random().toString(36).substring(7)}`;
 
-          if (isMounted) {
+          if (isMountedRef.current) {
             setCurrentUserId(userId);
-            await room.track({
-              user_id: userId,
-              status: 'looking_for_partner',
-              online_at: new Date().toISOString(),
-              classification,
-              taskCategory: currentTaskCategory,
-            });
+            // Throttle track request directly
+            setTimeout(() => {
+              if (isMountedRef.current) {
+                room.track({
+                  user_id: userId,
+                  status: 'looking_for_partner',
+                  online_at: new Date().toISOString(),
+                  classification,
+                  taskCategory: currentTaskCategory,
+                }).catch(e => console.warn('[BodyDoubling] Track failed:', e));
+              }
+            }, 500);
           }
+        } else if (status === 'CLOSED') {
+          // Normal teardown during unmount, ignore
         } else if (status !== 'SUBSCRIBED') {
           console.warn(`[BodyDoubling] Realtime network connection drop detected: ${status}`);
           setIsConnecting(true);
@@ -159,14 +176,20 @@ export const BodyDoubling: React.FC = () => {
       });
 
     return () => {
-      isMounted = false;
-      room.untrack();
-      supabase.removeChannel(room);
+      if (room.state === 'joined') {
+        room.untrack().then(() => {
+          supabase.removeChannel(room);
+        }).catch(() => supabase.removeChannel(room));
+      } else {
+        supabase.removeChannel(room);
+      }
     };
   }, [classification, currentTaskCategory]);
 
   // ── Ambient Audio (Lobby) ───────────────────────────────────────────────────
   useEffect(() => {
+    let playPromise: Promise<void> | undefined;
+
     if (!activeRoomId) {
       if (!ambientAudioRef.current) {
         // Soft white noise / cafe ambience
@@ -175,11 +198,25 @@ export const BodyDoubling: React.FC = () => {
         audio.volume = 0.1;
         ambientAudioRef.current = audio;
       }
-      ambientAudioRef.current.play().catch(e => console.warn('[BodyDoubling] Auto-play blocked:', e));
+      playPromise = ambientAudioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(e => {
+          if (e.name !== 'AbortError') {
+            console.warn('[BodyDoubling] Auto-play blocked:', e);
+          }
+        });
+      }
     } else {
       ambientAudioRef.current?.pause();
     }
-    return () => ambientAudioRef.current?.pause();
+    
+    return () => {
+      if (playPromise !== undefined) {
+        playPromise.then(() => ambientAudioRef.current?.pause()).catch(() => {});
+      } else {
+        ambientAudioRef.current?.pause();
+      }
+    };
   }, [activeRoomId]);
 
   // ── Action Pulses (Throttled Broadcast) ────────────────────────────────────

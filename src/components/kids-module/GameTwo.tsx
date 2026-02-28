@@ -16,17 +16,22 @@
  * Styling: full Tailwind + Framer Motion — zero CSS file imports.
  * Bootstrap and Game_2.css removed.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
-import { Camera } from 'lucide-react';
+import { Camera, Heart } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fetchSpellingQuestions, SpellingQuestion } from '../../agents/gameContentAgent';
+import { useCognitiveStore } from '../../stores/cognitiveStore';
 
 import useSessionId from '../../hooks/kids/useSessionId';
 import useWebcam from '../../hooks/kids/useWebcam';
 import useCapture from '../../hooks/kids/useCapture';
+
+const CONFUSION_PAUSE_THRESHOLD = 70;
+const CONFUSION_PAUSE_DURATION_MS = 5_000;
+const CONFUSION_PAUSE_COOLDOWN_MS = 15_000;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 // DragSpellQuestion re-exported from gameContentAgent for local use
@@ -158,6 +163,9 @@ export default function GameTwo() {
   const { videoRef, webcamGranted, webcamError, requestWebcamAccess, stopWebcam } = useWebcam();
   const { canvasRef, captureImage, captureScreenshot } = useCapture({ videoRef });
 
+  // Cognitive Store — real-time ML metrics for confusion detection
+  const metrics = useCognitiveStore(s => s.metrics);
+
   const [questions, setQuestions] = useState<DragSpellQuestion[]>([]);
   const [gameStarted, setGameStarted] = useState(false);
   const [currentLevel, setCurrentLevel] = useState(0);
@@ -167,12 +175,38 @@ export default function GameTwo() {
   const [intervalId, setIntervalId] = useState<ReturnType<typeof setInterval> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // ── Confusion Pause state ─────────────────────────────────────────────────
+  const [confusionPauseActive, setConfusionPauseActive] = useState(false);
+  const confusionCooldownRef = useRef<number>(0);
+
+  const handleConfusionPause = useCallback(() => {
+    const now = Date.now();
+    if (now - confusionCooldownRef.current < CONFUSION_PAUSE_COOLDOWN_MS) return;
+    confusionCooldownRef.current = now;
+    setConfusionPauseActive(true);
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => setConfusionPauseActive(false), CONFUSION_PAUSE_DURATION_MS);
+  }, []);
+
+  // Watch real-time metrics from useCognitiveStore
+  useEffect(() => {
+    if (!gameStarted || showEndScreen) return;
+    const { frustration = 0, tension = 0 } = (metrics as any);
+    if (frustration > CONFUSION_PAUSE_THRESHOLD || tension > CONFUSION_PAUSE_THRESHOLD) {
+      handleConfusionPause();
+    }
+  }, [metrics, gameStarted, showEndScreen, handleConfusionPause]);
+
   // Fetch questions — Gemini first (age-calibrated), Supabase seed fallback
   useEffect(() => {
     fetchSpellingQuestions('animals, fruits, and simple household objects', ageForGemini)
       .then(qs => {
-        setQuestions(qs);
-        if (qs.length > 0) setCompletedWord(qs[0].word ?? '');
+        const shuffledQs = qs.map(q => ({
+          ...q,
+          options: [...q.options].sort(() => Math.random() - 0.5)
+        }));
+        setQuestions(shuffledQs);
+        if (shuffledQs.length > 0) setCompletedWord(shuffledQs[0].word ?? '');
         setIsLoading(false);
       })
       .catch(() => setIsLoading(false));
@@ -238,6 +272,30 @@ export default function GameTwo() {
       {/* Offscreen AV elements — must render in DOM for ref attachment */}
       <video ref={videoRef} autoPlay playsInline className="fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none" />
       <canvas ref={canvasRef} width={640} height={480} className="fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none" />
+
+      {/* ── Confusion Pause Overlay ─────────────────────────────────────── */}
+      <AnimatePresence>
+        {confusionPauseActive && (
+          <motion.div
+            key="confusion-pause"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-sky-900/95 backdrop-blur-xl"
+          >
+            <motion.div
+              animate={{ scale: [1, 1.4, 1.4, 1] }}
+              transition={{ duration: 5, ease: 'easeInOut', repeat: 0 }}
+              className="w-32 h-32 rounded-full bg-sky-400/30 flex items-center justify-center shadow-[0_0_60px_rgba(56,189,248,0.4)]"
+            >
+              <Heart className="w-10 h-10 text-white/80" />
+            </motion.div>
+            <h2 className="mt-8 text-2xl font-black text-white text-center">Take a deep breath... 🧘</h2>
+            <p className="mt-2 text-white/60 text-center max-w-xs text-sm">The game will continue in a moment. Breathe in… breathe out.</p>
+            <div className="mt-5 text-white/30 text-xs">Resuming automatically in 5 seconds</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="max-w-xl mx-auto px-4 py-8 flex flex-col min-h-screen gap-6">
         <motion.h2
@@ -319,6 +377,9 @@ export default function GameTwo() {
             </motion.div>
           )}
         </AnimatePresence>
+        
+        {/* Hidden canvas required by useCapture for rendering and encoding frames */}
+        <canvas ref={canvasRef} width={640} height={480} style={{ display: 'none' }} />
       </div>
     </div>
   );

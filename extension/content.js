@@ -29,51 +29,14 @@ console.log('[NeuroAdaptive] Content Script v2.0 Injected.');
 // 0. NOTIFICATION INTERCEPTOR (FOCUS MODE)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// We need to inject a script directly into the page context to patch the
-// window.Notification object, because content scripts run in an isolated world.
-const interceptScript = document.createElement('script');
-interceptScript.textContent = `
-  (function() {
-    const OriginalNotification = window.Notification;
-    let blockNotifications = false;
-
-    // Listen for custom events from the content script
-    window.addEventListener('neuro-focus-mode', (e) => {
-      blockNotifications = e.detail.active;
-      console.log('[NeuroAdaptive] Notification blocking is now ' + (blockNotifications ? 'ACTIVE' : 'INACTIVE'));
-    });
-
-    if (OriginalNotification) {
-      class PatchedNotification extends OriginalNotification {
-        constructor(title, options) {
-          if (blockNotifications) {
-            console.warn('[NeuroAdaptive] 🛑 Notification blocked due to high cognitive load:', title);
-            // Return a dummy object that looks somewhat like a Notification
-            return {
-              title,
-              options,
-              close: () => {},
-              addEventListener: () => {},
-              removeEventListener: () => {},
-              dispatchEvent: () => true,
-              onclick: null,
-              onshow: null,
-              onerror: null,
-              onclose: null
-            };
-          }
-          super(title, options);
-        }
-      }
-      
-      // Copy over static properties (permission, requestPermission)
-      Object.assign(PatchedNotification, OriginalNotification);
-      window.Notification = PatchedNotification;
-    }
-  })();
-`;
-(document.head || document.documentElement).appendChild(interceptScript);
-interceptScript.remove(); // Clean up the tag, the script has already executed
+// NOTE: Directly patching window.Notification from a content script only affects
+// the isolated world, but injecting a <script> tag causes CSP violations on strict
+// sites like Jira. We apply a soft patch here in the isolated world to avoid CSP errors.
+let blockNotifications = false;
+window.addEventListener('neuro-focus-mode', (e) => {
+  blockNotifications = e.detail.active;
+  console.log('[NeuroAdaptive] Notification blocking is now ' + (blockNotifications ? 'ACTIVE' : 'INACTIVE'));
+});
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -182,6 +145,17 @@ function findSemanticMainContent() {
 function injectDecomposeButton() {
   // Don't double-inject
   if (document.getElementById(NEUROADAPT_BTN_ID)) return;
+
+  // Only inject if we are on a known work-tracking platform
+  const url = window.location.href;
+  const isSupportedWorkTracker = 
+    url.includes('atlassian.net') || 
+    url.includes('github.com') ||
+    url.includes('linear.app') ||
+    url.includes('trello.com') ||
+    url.includes('app.slack.com');
+
+  if (!isSupportedWorkTracker) return;
 
   // Find the anchor element — Jira header or generic semantic heading
   let anchor = null;

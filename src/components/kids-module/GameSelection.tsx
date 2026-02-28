@@ -5,9 +5,9 @@
  * All functional logic preserved: username from localStorage,
  * logout handler, game navigation with state.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../lib/supabase';
 import { useCognitiveStore } from '../../stores/cognitiveStore';
 
@@ -16,6 +16,66 @@ export default function GameSelection() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('Player');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [showBreathe, setShowBreathe] = useState(false);
+  const [breathePhase, setBreathePhase] = useState<'inhale'|'hold'|'exhale'>('inhale');
+  const breatheAudioRef = useRef<OscillatorNode | null>(null);
+  const breatheGainRef = useRef<GainNode | null>(null);
+
+  const startBreathing = async () => {
+    setShowBreathe(true);
+    setBreathePhase('inhale');
+    // 432 Hz binaural — same as CrisisMode
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioCtx();
+      
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 1);
+      gain.connect(ctx.destination);
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(432, ctx.currentTime);
+      osc.connect(gain);
+      osc.start();
+      
+      breatheAudioRef.current = osc;
+      breatheGainRef.current = gain;
+    } catch (e) {
+      console.warn('[BreatheWithBear] AudioContext failed:', e);
+    }
+  };
+
+  const stopBreathing = () => {
+    setShowBreathe(false);
+    breatheAudioRef.current?.stop();
+    breatheAudioRef.current?.disconnect();
+    breatheAudioRef.current = null;
+    breatheGainRef.current?.disconnect();
+    breatheGainRef.current = null;
+  };
+
+  // 4-7-8 breathing cycle
+  useEffect(() => {
+    if (!showBreathe) return;
+    const phases: Array<{ name: 'inhale'|'hold'|'exhale'; ms: number }> = [
+      { name: 'inhale', ms: 4000 },
+      { name: 'hold', ms: 7000 },
+      { name: 'exhale', ms: 8000 },
+    ];
+    let idx = 0;
+    const run = () => {
+      setBreathePhase(phases[idx].name);
+      idx = (idx + 1) % phases.length;
+    };
+    run();
+    const interval = setInterval(run, 4000); // simplified cycle tick
+    return () => clearInterval(interval);
+  }, [showBreathe]);
 
   // Derive username and avatar from Supabase auth session
   useEffect(() => {
@@ -124,7 +184,7 @@ export default function GameSelection() {
                   </div>
                   <h2 className="text-[#422006] dark:text-yellow-50 text-2xl md:text-3xl font-bold">Breathe with Bear</h2>
                   <p className="text-[#422006]/70 dark:text-yellow-100/70 text-lg max-w-md">Take a moment to watch the gentle bear breathe in and out. Let's match our breathing together.</p>
-                  <button className="mt-2 text-[#422006] bg-[#eebd2b] hover:bg-yellow-400 font-bold py-3 px-8 rounded-full transition-all inline-flex items-center gap-2 transform active:scale-95">
+                  <button onClick={startBreathing} className="mt-2 text-[#422006] bg-[#eebd2b] hover:bg-yellow-400 font-bold py-3 px-8 rounded-full transition-all inline-flex items-center gap-2 transform active:scale-95">
                     <span className="material-symbols-outlined">play_circle</span>
                     Start Breathing
                   </button>
@@ -221,6 +281,50 @@ export default function GameSelection() {
           </div>
         </main>
       </div>
+
+      {/* Breathe With Bear Modal */}
+      <AnimatePresence>
+        {showBreathe && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-amber-950/80 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              className="bg-[#fffdf5] rounded-3xl p-12 flex flex-col items-center gap-8 max-w-sm w-full mx-4 relative shadow-2xl"
+            >
+              <button onClick={stopBreathing} className="absolute top-4 right-4 text-[#9a864c] hover:text-[#422006] transition-colors">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+              <motion.div
+                animate={{ scale: breathePhase === 'inhale' ? 1.4 : breathePhase === 'hold' ? 1.4 : 1 }}
+                transition={{ duration: breathePhase === 'inhale' ? 4 : breathePhase === 'hold' ? 7 : 8, ease: 'easeInOut' }}
+                className="size-40 rounded-full bg-[#eebd2b]/20 border-4 border-[#eebd2b]/40 flex items-center justify-center"
+              >
+                <motion.div
+                  animate={{ scale: breathePhase === 'inhale' ? 1.2 : breathePhase === 'hold' ? 1.2 : 0.85 }}
+                  transition={{ duration: 4, ease: 'easeInOut' }}
+                  className="size-28 rounded-full bg-[#eebd2b]/30 flex items-center justify-center"
+                >
+                  <span className="material-symbols-outlined text-[64px] text-[#eebd2b]">sentiment_satisfied</span>
+                </motion.div>
+              </motion.div>
+              <div className="text-center">
+                <p className="text-3xl font-bold text-[#422006] capitalize">{breathePhase}</p>
+                <p className="text-[#9a864c] mt-1">
+                  {breathePhase === 'inhale' ? '4 seconds' : breathePhase === 'hold' ? '7 seconds' : '8 seconds'}
+                </p>
+                <p className="text-xs text-[#9a864c]/70 mt-3">432 Hz grounding tone playing 🎵</p>
+              </div>
+              <p className="text-sm text-[#422006]/70 text-center px-4">Breathe with Bear using 4-7-8 breathing. Let your body relax.</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

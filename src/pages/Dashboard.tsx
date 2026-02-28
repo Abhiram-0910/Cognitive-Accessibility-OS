@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCognitiveStore } from '../stores/cognitiveStore';
 import { useCognitiveMonitor } from '../hooks/useCognitiveMonitor';
@@ -61,19 +61,66 @@ export const Dashboard: React.FC<{ userId: string }> = ({ userId }) => {
   useCognitiveMonitor();
   useDemoSimulator(userId);
 
+  const navigate = useNavigate();
   const [showOSBridge, setShowOSBridge] = useState(false);
   const [showNotifToast, setShowNotifToast] = useState(false);
+  const [focusSessionActive, setFocusSessionActive] = useState(false);
+  const [focusMinutes, setFocusMinutes] = useState(0);
 
   // ── Audio player state (widget #8) ──────────────────────────────────────
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const focusAudioRef = useRef<OscillatorNode | null>(null);
   const focusGainRef = useRef<GainNode | null>(null);
+  const ownAudioCtxRef = useRef<AudioContext | null>(null);
+
+  const getOrCreateAudioCtx = useCallback((): AudioContext => {
+    if (ownAudioCtxRef.current && ownAudioCtxRef.current.state !== 'closed') {
+      if (ownAudioCtxRef.current.state === 'suspended') {
+        ownAudioCtxRef.current.resume().catch(console.warn);
+      }
+      return ownAudioCtxRef.current;
+    }
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    const ctx = new AudioCtx();
+    ctx.resume().catch(console.warn);
+    ownAudioCtxRef.current = ctx;
+    return ctx;
+  }, []);
+
+  // Start Focus Session — starts 40Hz audio + activates focus timer
+  const startFocusSession = useCallback(() => {
+    setFocusSessionActive(true);
+    setFocusMinutes(0);
+    const ctx = getOrCreateAudioCtx();
+    
+    if (!isAudioPlaying) {
+      // Much more audible binaural Alpha beat (200Hz Carrier, 240Hz for 40Hz beat)
+      const gainNode = ctx.createGain();
+      gainNode.gain.setValueAtTime(0, ctx.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.5);
+      gainNode.connect(ctx.destination);
+      
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(200, ctx.currentTime);
+      osc.connect(gainNode);
+      osc.start();
+      
+      focusAudioRef.current = osc;
+      focusGainRef.current = gainNode;
+      setIsAudioPlaying(true);
+    }
+  }, [isAudioPlaying, getOrCreateAudioCtx]);
+
+  // Focus session timer — counts every SECOND for live display
+  useEffect(() => {
+    if (!focusSessionActive) return;
+    const t = setInterval(() => setFocusMinutes(m => m + 1), 1000);
+    return () => clearInterval(t);
+  }, [focusSessionActive]);
 
   const toggleFocusAudio = useCallback(() => {
-    const store = useCognitiveStore.getState();
-    // Use the pre-warmed AudioContext from the global store
-    const ctx = (store as any).audioContext as AudioContext | undefined;
-    if (!ctx) return;
+    const ctx = getOrCreateAudioCtx();
 
     if (isAudioPlaying) {
       // Fade out and stop
@@ -89,16 +136,16 @@ export const Dashboard: React.FC<{ userId: string }> = ({ userId }) => {
       }
       setIsAudioPlaying(false);
     } else {
-      // Create 40 Hz carrier + 43 Hz tone (binaural 3 Hz beat)
-      if (ctx.state === 'suspended') ctx.resume();
+      // Create 200 Hz carrier (much more audible)
+      if (ctx.state === 'suspended') ctx.resume().catch(console.warn);
       const gainNode = ctx.createGain();
       gainNode.gain.setValueAtTime(0, ctx.currentTime);
-      gainNode.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.5);
+      gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.5);
       gainNode.connect(ctx.destination);
 
       const osc = ctx.createOscillator();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(40, ctx.currentTime); // Alpha 40 Hz
+      osc.frequency.setValueAtTime(200, ctx.currentTime);
       osc.connect(gainNode);
       osc.start();
 
@@ -208,7 +255,7 @@ export const Dashboard: React.FC<{ userId: string }> = ({ userId }) => {
         </div>
         {/* Bottom Links */}
         <div className="flex flex-col gap-2">
-          <Link to="/reading" className="flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium transition-colors">
+          <Link to="/settings" className="flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium transition-colors">
             <span className="material-symbols-outlined">settings</span>
             <span className="text-sm">Settings</span>
           </Link>
@@ -249,9 +296,9 @@ export const Dashboard: React.FC<{ userId: string }> = ({ userId }) => {
                 🔔 Notifications — coming soon
               </div>
             )}
-            <button onClick={() => setCrisisActive(true)} className="h-12 px-6 rounded-full bg-slate-900 text-white font-medium shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-2">
-              <span className="material-symbols-outlined text-lg">play_arrow</span>
-              Start Focus Session
+            <button onClick={startFocusSession} className="h-12 px-6 rounded-full bg-slate-900 text-white font-medium shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-2">
+              <span className="material-symbols-outlined text-lg">{focusSessionActive ? 'timer' : 'play_arrow'}</span>
+              {focusSessionActive ? `Focus: ${Math.floor(focusMinutes / 60)}m ${focusMinutes % 60}s` : 'Start Focus Session'}
             </button>
           </div>
         </header>
@@ -376,7 +423,8 @@ export const Dashboard: React.FC<{ userId: string }> = ({ userId }) => {
           <div className="bg-white border border-slate-100 shadow-sm rounded-3xl overflow-hidden transition-all duration-300 hover:shadow-md p-5 flex items-center justify-between group cursor-pointer hover:border-[#197fe6]/30">
             <div className="flex flex-col">
               <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Alpha Waves</span>
-              <span className="text-xl font-bold text-slate-900">12 Hz</span>
+              <span className="text-xl font-bold text-slate-900">{Math.max(8, Math.round(13 - (cognitiveLoadScore / 100) * 5))} Hz</span>
+              <span className="text-[10px] text-slate-400 mt-0.5">{cognitiveLoadScore < 40 ? 'in flow' : cognitiveLoadScore < 75 ? 'moderate' : 'suppressed'}</span>
             </div>
             <div className="size-12 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform">
               <span className="material-symbols-outlined">waves</span>
